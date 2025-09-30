@@ -4,12 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { uploadData } from 'aws-amplify/storage';
-import { generateClient } from 'aws-amplify/data';
 import { useDropzone } from 'react-dropzone';
 import { Send, Upload, X, FileText, Loader2 } from 'lucide-react';
-import type { Schema } from '@/amplify/data/resource';
-
-const client = generateClient<Schema>();
 
 interface Message {
   id: string;
@@ -125,14 +121,7 @@ export default function ChatInterface() {
     setIsLoading(true);
 
     try {
-      // Save user message to database
-      await client.models.ChatMessage.create({
-        content: userMessage.content,
-        role: 'user',
-        timestamp: userMessage.timestamp.toISOString(),
-        userId: 'current-user', // Get from auth context
-        files: userMessage.files,
-      });
+      // Note: Pre produkciu môžete pridať ukladanie do DynamoDB
 
       // Prepare prompt for Bedrock
       let prompt = userMessage.content;
@@ -167,14 +156,6 @@ export default function ChatInterface() {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
-
-      // Save assistant message to database
-      await client.models.ChatMessage.create({
-        content: assistantMessage.content,
-        role: 'assistant',
-        timestamp: assistantMessage.timestamp.toISOString(),
-        userId: 'current-user',
-      });
 
       // Clear uploaded files after sending
       setUploadedFiles([]);
