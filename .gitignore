@@ -1,0 +1,47 @@
+# Terraform files
+*.tfstate
+*.tfstate.*
+*.tfvars.backup
+*.tfplan
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate.d/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Large files that shouldn't be in git
+modules/lambda/**/*.zip
+modules/lambda/layers/
+*.zip
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Node modules (ak by boli v root)
+node_modules/
+
+# AWS credentials
+.aws/
+credentials
