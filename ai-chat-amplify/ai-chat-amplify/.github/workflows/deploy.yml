@@ -1,0 +1,45 @@
+name: Deploy to AWS Amplify
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'ai-chat-amplify/ai-chat-amplify/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'ai-chat-amplify/ai-chat-amplify/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: ai-chat-amplify/ai-chat-amplify/package-lock.json
+        
+    - name: Install dependencies
+      working-directory: ./ai-chat-amplify/ai-chat-amplify
+      run: npm ci
+      
+    - name: Run type check
+      working-directory: ./ai-chat-amplify/ai-chat-amplify
+      run: npm run type-check
+      
+    - name: Build application
+      working-directory: ./ai-chat-amplify/ai-chat-amplify
+      run: npm run build
+      env:
+        NEXT_PUBLIC_USER_POOL_ID: ${{ secrets.NEXT_PUBLIC_USER_POOL_ID }}
+        NEXT_PUBLIC_USER_POOL_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_USER_POOL_CLIENT_ID }}
+        NEXT_PUBLIC_IDENTITY_POOL_ID: ${{ secrets.NEXT_PUBLIC_IDENTITY_POOL_ID }}
+        NEXT_PUBLIC_AWS_REGION: ${{ secrets.NEXT_PUBLIC_AWS_REGION }}
+        NEXT_PUBLIC_STORAGE_BUCKET: ${{ secrets.NEXT_PUBLIC_STORAGE_BUCKET }}
+        NEXT_PUBLIC_BEDROCK_REGION: us-east-1

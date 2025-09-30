@@ -1,0 +1,15 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "regions": ["fra1"],
+  "env": {
+    "NEXT_PUBLIC_USER_POOL_ID": "@cognito_user_pool_id",
+    "NEXT_PUBLIC_USER_POOL_CLIENT_ID": "@cognito_user_pool_client_id", 
+    "NEXT_PUBLIC_IDENTITY_POOL_ID": "@cognito_identity_pool_id",
+    "NEXT_PUBLIC_AWS_REGION": "@aws_region",
+    "NEXT_PUBLIC_STORAGE_BUCKET": "@storage_bucket_name",
+    "NEXT_PUBLIC_BEDROCK_REGION": "us-east-1"
+  }
+}
