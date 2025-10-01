@@ -42,7 +42,7 @@ export default function ChatInterface() {
     try {
       const session = await fetchAuthSession();
       const client = new BedrockRuntimeClient({
-        region: 'us-east-1', // Zmeňte podľa vášho regiónu
+        region: 'us-east-1', // Change according to your region
         credentials: session.credentials,
       });
       setBedrockClient(client);
@@ -178,8 +178,8 @@ export default function ChatInterface() {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="text-center text-gray-500 mt-20">
-            <h2 className="text-xl font-semibold mb-2">Vitajte v AI Chat Assistant</h2>
-            <p>Začnite konverzáciu zadaním správy alebo nahraním súboru</p>
+            <h2 className="text-xl font-semibold mb-2">Welcome to AI Chat Assistant</h2>
+            <p>Start a conversation by typing a message or uploading a file</p>
           </div>
         ) : (
           messages.map((message) => (
@@ -198,7 +198,7 @@ export default function ChatInterface() {
                 {message.files && message.files.length > 0 && (
                   <div className="mt-2 text-sm opacity-75">
                     <FileText className="inline w-4 h-4 mr-1" />
-                    {message.files.length} súbor(ov) priložených
+                    {message.files.length} file(s) attached
                   </div>
                 )}
                 <p className={`text-xs mt-2 ${
@@ -223,7 +223,7 @@ export default function ChatInterface() {
       <div className="border-t bg-white p-4">
         {uploadedFiles.length > 0 && (
           <div className="mb-3 p-3 bg-gray-100 rounded-lg">
-            <p className="text-sm font-medium text-gray-700 mb-2">Priložené súbory:</p>
+            <p className="text-sm font-medium text-gray-700 mb-2">Attached files:</p>
             <div className="space-y-1">
               {uploadedFiles.map((file, index) => (
                 <div key={index} className="flex items-center justify-between text-sm">
@@ -263,7 +263,7 @@ export default function ChatInterface() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-            placeholder="Napíšte správu..."
+            placeholder="Type a message..."
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={isLoading}
           />

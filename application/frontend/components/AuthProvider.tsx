@@ -18,7 +18,7 @@ export default function AuthProvider({ children }: AuthProviderProps) {
           return (
             <div className="text-center py-6">
               <h1 className="text-2xl font-bold">AI Chat Assistant</h1>
-              <p className="text-gray-600">Prihlásenie do aplikácie</p>
+              <p className="text-gray-600">Sign in to your account</p>
             </div>
           );
         },
@@ -27,23 +27,23 @@ export default function AuthProvider({ children }: AuthProviderProps) {
         signUp: {
           email: {
             label: 'Email',
-            placeholder: 'Zadajte váš email',
+            placeholder: 'Enter your email',
             isRequired: true,
           },
           password: {
-            label: 'Heslo',
-            placeholder: 'Zadajte heslo (min. 8 znakov)',
+            label: 'Password',
+            placeholder: 'Enter password (min. 8 characters)',
             isRequired: true,
           },
         },
         signIn: {
           email: {
             label: 'Email',
-            placeholder: 'Zadajte váš email',
+            placeholder: 'Enter your email',
           },
           password: {
-            label: 'Heslo',
-            placeholder: 'Zadajte vaše heslo',
+            label: 'Password',
+            placeholder: 'Enter your password',
           },
         },
       }}
