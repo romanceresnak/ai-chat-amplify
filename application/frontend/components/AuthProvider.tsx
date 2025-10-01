@@ -1,8 +1,13 @@
 'use client';
 
-import { Authenticator } from '@aws-amplify/ui-react';
+import { Authenticator, translations } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
 import { ReactNode } from 'react';
+import { I18n } from 'aws-amplify/utils';
+
+// Set up English translations
+I18n.putVocabularies(translations);
+I18n.setLanguage('en');
 
 interface AuthProviderProps {
   children: ReactNode;
