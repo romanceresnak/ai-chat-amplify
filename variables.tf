@@ -59,6 +59,10 @@ variable "repository_url" {
   description = "Git repository URL for Amplify hosting"
   type        = string
   default     = ""
+  validation {
+    condition     = can(regex("^(https?://.+|)$", var.repository_url))
+    error_message = "The repository_url must be a valid URL or empty string."
+  }
 }
 
 variable "git_branch" {
@@ -70,5 +74,12 @@ variable "git_branch" {
 variable "custom_domain" {
   description = "Custom domain for the Amplify app (optional)"
   type        = string
+  default     = ""
+}
+
+variable "github_token" {
+  description = "GitHub OAuth token for repository access"
+  type        = string
+  sensitive   = true
   default     = ""
 }

@@ -115,6 +115,7 @@ module "amplify_hosting" {
   environment                 = var.environment
   repository_url              = var.repository_url
   branch_name                 = var.git_branch
+  github_token                = var.github_token
   cognito_user_pool_id        = module.cognito.user_pool_id
   cognito_user_pool_client_id = module.cognito.user_pool_client_id
   cognito_identity_pool_id    = module.cognito.identity_pool_id

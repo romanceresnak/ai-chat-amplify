@@ -11,6 +11,10 @@ variable "environment" {
 variable "repository_url" {
   description = "Git repository URL"
   type        = string
+  validation {
+    condition     = length(var.repository_url) > 0 && length(var.repository_url) <= 1000
+    error_message = "The repository_url must be between 1 and 1000 characters."
+  }
 }
 
 variable "branch_name" {
@@ -47,6 +51,13 @@ variable "storage_bucket_name" {
 variable "custom_domain" {
   description = "Custom domain for the app (optional)"
   type        = string
+  default     = ""
+}
+
+variable "github_token" {
+  description = "GitHub OAuth token for repository access"
+  type        = string
+  sensitive   = true
   default     = ""
 }
 
