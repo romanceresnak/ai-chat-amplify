@@ -4,8 +4,7 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   images: {
     unoptimized: true
-  },
-  trailingSlash: true
+  }
 }
 
 export default nextConfig
