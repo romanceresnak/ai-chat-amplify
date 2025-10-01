@@ -5,10 +5,7 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true
   },
-  trailingSlash: true,
-  experimental: {
-    outputFileTracingRoot: undefined
-  }
+  trailingSlash: true
 }
 
 export default nextConfig
