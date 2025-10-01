@@ -21,24 +21,23 @@ resource "aws_amplify_app" "main" {
   # Build settings for Next.js in subdirectory
   build_spec = <<-EOT
     version: 1
-    appRoot: ai-chat-amplify/ai-chat-amplify
     frontend:
       phases:
         preBuild:
           commands:
-            - npm --version
-            - node --version
+            - cd ai-chat-amplify/ai-chat-amplify
             - npm ci
         build:
           commands:
+            - cd ai-chat-amplify/ai-chat-amplify
             - npm run build
       artifacts:
-        baseDirectory: .next
+        baseDirectory: ai-chat-amplify/ai-chat-amplify/.next
         files:
           - '**/*'
       cache:
         paths:
-          - node_modules/**/*
+          - ai-chat-amplify/ai-chat-amplify/node_modules/**/*
   EOT
 
   # Environment variables from Cognito outputs
@@ -51,30 +50,7 @@ resource "aws_amplify_app" "main" {
     NEXT_PUBLIC_BEDROCK_REGION      = "us-east-1"
   }
 
-  # Custom rules for Next.js SSR routing
-  custom_rule {
-    source = "/_next/static/<*>"
-    target = "/_next/static/<*>"
-    status = "200"
-  }
-
-  custom_rule {
-    source = "/_next/image/<*>"
-    target = "/_next/image/<*>"
-    status = "200"
-  }
-
-  custom_rule {
-    source = "/favicon.ico"
-    target = "/favicon.ico"
-    status = "200"
-  }
-
-  custom_rule {
-    source = "/<*>"
-    target = "/<*>"
-    status = "200"
-  }
+  # Custom rules for Next.js App - removed as they interfere with SSR
 
   # Auto branch creation
   enable_auto_branch_creation = true
