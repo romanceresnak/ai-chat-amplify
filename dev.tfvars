@@ -24,6 +24,6 @@ bedrock_model_arns = [
 ]
 
 # Amplify Hosting configuration pre globálny deployment
-repository_url  = ""  # Necháme prázdne, pripojíme repo manuálne
+repository_url  = "https://github.com/romanceresnak/ai-chat-amplify"
 git_branch      = "main"
 custom_domain   = ""  # Voliteľne: "yourdomain.com"

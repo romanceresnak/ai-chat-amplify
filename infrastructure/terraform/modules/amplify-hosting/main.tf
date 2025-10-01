@@ -25,19 +25,17 @@ resource "aws_amplify_app" "main" {
       phases:
         preBuild:
           commands:
-            - cd ai-chat-amplify/ai-chat-amplify
             - npm ci
         build:
           commands:
-            - cd ai-chat-amplify/ai-chat-amplify
             - npm run build
       artifacts:
-        baseDirectory: ai-chat-amplify/ai-chat-amplify/.next
+        baseDirectory: out
         files:
           - '**/*'
       cache:
         paths:
-          - ai-chat-amplify/ai-chat-amplify/node_modules/**/*
+          - node_modules/**/*
   EOT
 
   # Environment variables from Cognito outputs
@@ -74,7 +72,7 @@ resource "aws_amplify_branch" "main" {
   
   environment_variables = {
     AMPLIFY_DIFF_DEPLOY = "false"
-    AMPLIFY_MONOREPO_APP_ROOT = "ai-chat-amplify/ai-chat-amplify"
+    AMPLIFY_MONOREPO_APP_ROOT = "application/frontend"
     _CUSTOM_IMAGE = "public.ecr.aws/docker/library/node:20"
     NEXT_PUBLIC_USER_POOL_ID        = var.cognito_user_pool_id
     NEXT_PUBLIC_USER_POOL_CLIENT_ID = var.cognito_user_pool_client_id
