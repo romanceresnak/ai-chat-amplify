@@ -5,6 +5,7 @@ import logging
 from typing import Dict, Any
 import uuid
 from datetime import datetime
+import re
 
 # Initialize logging
 logger = logging.getLogger()
@@ -164,10 +165,18 @@ def extract_financial_insights(kb_response: Dict[str, Any], document_key: str) -
         result = json.loads(response['body'].read())
         content_text = result['content'][0]['text']
         
-        # Try to parse as JSON, fallback to structured text if not valid JSON
+        # Try to parse as JSON, with regex extraction if needed
         try:
             return json.loads(content_text)
         except json.JSONDecodeError:
+            # Try to extract JSON from text using regex
+            json_match = re.search(r'\{.*\}', content_text, re.DOTALL)
+            if json_match:
+                try:
+                    return json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    pass
+            
             # If not valid JSON, create structured data from text
             logger.warning(f"Bedrock response not valid JSON, creating structured data from text")
             return {
@@ -226,10 +235,18 @@ def generate_content_structure(financial_insights: Dict[str, Any],
         result = json.loads(response['body'].read())
         content_text = result['content'][0]['text']
         
-        # Try to parse as JSON, fallback to default structure
+        # Try to parse as JSON, with regex extraction if needed
         try:
             return json.loads(content_text)
         except json.JSONDecodeError:
+            # Try to extract JSON from text using regex
+            json_match = re.search(r'\{.*\}', content_text, re.DOTALL)
+            if json_match:
+                try:
+                    return json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    pass
+            
             logger.warning(f"Content structure response not valid JSON, using default")
             return get_default_template_structure()
         
@@ -295,18 +312,32 @@ def generate_slide_content(slide: Dict[str, Any],
         result = json.loads(response['body'].read())
         content_text = result['content'][0]['text']
         
-        # Try to parse as JSON, fallback to default slide content
+        # Try to parse as JSON, with regex extraction if needed
         try:
             slide_content = json.loads(content_text)
         except json.JSONDecodeError:
-            logger.warning(f"Slide content response not valid JSON, using default")
-            slide_content = {
-                'title': slide.get('title', f"Slide {slide.get('number', 1)}"),
-                'content': content_text[:200] if content_text else "Generated content",
-                'charts': [],
-                'tables': [],
-                'notes': ''
-            }
+            # Try to extract JSON from text using regex
+            json_match = re.search(r'\{.*\}', content_text, re.DOTALL)
+            if json_match:
+                try:
+                    slide_content = json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    slide_content = None
+            else:
+                slide_content = None
+                
+            if not slide_content:
+                logger.warning(f"Slide content response not valid JSON, using default")
+                slide_content = {
+                    'title': slide.get('title', f"Slide {slide.get('number', 1)}"),
+                    'content': {
+                        'text': content_text[:200] if content_text else "Generated content",
+                        'highlights': ["Key point 1", "Key point 2", "Key point 3"]
+                    },
+                    'charts': [],
+                    'tables': [],
+                    'notes': ''
+                }
         
         return {
             'slide_number': slide.get('number'),
@@ -370,33 +401,97 @@ def get_default_prompt(prompt_name: str) -> str:
     Return default prompts if S3 prompts are not available.
     """
     prompts = {
-        'financial_extraction': """Extract key financial data and insights from the following document analysis:
-        {kb_response}
-        
+        'financial_extraction': """You are a financial data analyst. Extract key insights and return ONLY valid JSON.
+
+        Document Analysis: {kb_response}
         Document: {document_key}
         
-        Please provide a structured JSON response with:
-        - key_metrics: Important financial metrics
-        - trends: Identified trends
-        - risks: Key risks
-        - opportunities: Growth opportunities
-        - summary: Executive summary
-        """,
+        Return ONLY this JSON format:
+        {{
+            "key_metrics": ["Revenue: $X million", "Loan portfolio: $Y million", "ROI: Z%"],
+            "trends": ["Increasing loan volumes", "Stable interest rates", "Growing customer base"],
+            "risks": ["Credit risk", "Market volatility", "Regulatory changes"],
+            "opportunities": ["Digital transformation", "New market segments", "Product innovation"],
+            "summary": "Brief executive summary of financial performance"
+        }}
         
-        'content_structure': """Create a presentation structure based on:
+        Requirements:
+        - Return ONLY the JSON object, no other text
+        - Use specific financial metrics and numbers when available
+        - Keep arrays to 3-5 items each""",
+        
+        'content_structure': """You are a presentation architect. Create a presentation structure and return ONLY valid JSON.
+
         Financial Insights: {financial_insights}
         Template Structure: {template_structure}
         User Instructions: {user_instructions}
         
-        Return a JSON structure with slides array containing slide type, content outline, and data requirements.
-        """,
+        Return ONLY this JSON format:
+        {{
+            "slides": [
+                {{
+                    "number": 1,
+                    "type": "title",
+                    "title": "Financial Analysis Presentation",
+                    "layout": "title_slide"
+                }},
+                {{
+                    "number": 2,
+                    "type": "executive_summary",
+                    "title": "Executive Summary",
+                    "layout": "content"
+                }},
+                {{
+                    "number": 3,
+                    "type": "chart",
+                    "title": "Key Financial Metrics",
+                    "layout": "chart"
+                }}
+            ],
+            "metadata": {{
+                "title": "Financial Analysis Presentation",
+                "author": "ScribbeAI",
+                "description": "AI-generated financial analysis presentation"
+            }}
+        }}
         
-        'slide_content': """Generate detailed content for this slide:
+        Requirements:
+        - Return ONLY the JSON object, no other text
+        - Include 3-5 slides maximum
+        - Use appropriate slide types: title, executive_summary, chart, table, content""",
+        
+        'slide_content': """You are a presentation content generator. Your task is to create PowerPoint slide content in valid JSON format.
+
         Slide Structure: {slide_structure}
         Financial Insights: {financial_insights}
         
-        Return JSON with title, content, charts, tables, and speaker notes.
-        """
+        Generate content for this slide and return ONLY valid JSON in this exact format:
+        {{
+            "title": "Slide title here",
+            "content": {{
+                "text": "Main slide content text",
+                "highlights": ["Bullet point 1", "Bullet point 2", "Bullet point 3"]
+            }},
+            "charts": [{{
+                "chart_type": "bar",
+                "title": "Chart Title",
+                "data": {{
+                    "categories": ["Q1", "Q2", "Q3", "Q4"],
+                    "series": [{{
+                        "name": "Series 1",
+                        "values": [100, 150, 200, 175]
+                    }}]
+                }}
+            }}],
+            "tables": [],
+            "notes": "Speaker notes for this slide"
+        }}
+        
+        Requirements:
+        - Return ONLY the JSON object, no other text
+        - Use realistic financial data if charts are needed
+        - Make content relevant to the slide type
+        - Ensure all JSON is valid and properly formatted"""
     }
     
     return prompts.get(prompt_name, "")
