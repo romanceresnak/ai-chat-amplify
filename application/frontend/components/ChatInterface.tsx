@@ -126,12 +126,12 @@ export default function ChatInterface() {
       // Prepare prompt for Bedrock
       let prompt = userMessage.content;
       if (uploadedFiles.length > 0) {
-        prompt += `\\n\\nPriložené súbory: ${uploadedFiles.map(f => f.name).join(', ')}`;
+        prompt += `\\n\\nAttached files: ${uploadedFiles.map(f => f.name).join(', ')}`;
       }
 
       // Call Bedrock Claude model
       const command = new InvokeModelCommand({
-        modelId: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+        modelId: 'anthropic.claude-3-sonnet-20240229-v1:0',
         body: JSON.stringify({
           anthropic_version: 'bedrock-2023-05-31',
           max_tokens: 4096,
@@ -164,7 +164,7 @@ export default function ChatInterface() {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Prepáčte, vyskytla sa chyba pri spracovaní vašej požiadavky.',
+        content: 'Sorry, an error occurred while processing your request. Please make sure you have access to AWS Bedrock in the us-east-1 region.',
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
