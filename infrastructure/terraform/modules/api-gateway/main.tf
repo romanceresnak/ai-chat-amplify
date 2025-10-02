@@ -19,7 +19,7 @@ resource "aws_api_gateway_method" "create_presentation" {
   rest_api_id   = aws_api_gateway_rest_api.main.id
   resource_id   = aws_api_gateway_resource.presentations.id
   http_method   = "POST"
-  authorization = "AWS_IAM"
+  authorization = "NONE"
 }
 
 resource "aws_api_gateway_integration" "orchestrator" {
