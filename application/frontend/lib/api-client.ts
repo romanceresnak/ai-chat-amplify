@@ -31,11 +31,16 @@ export async function callLambdaFunction(functionPath: string, data: any) {
     };
 
     // Sign the request with AWS credentials
-    const signedRequest = aws4.sign(request, {
+    const awsCredentials: any = {
       accessKeyId: credentials.accessKeyId,
       secretAccessKey: credentials.secretAccessKey,
-      sessionToken: credentials.sessionToken,
-    });
+    };
+    
+    if (credentials.sessionToken) {
+      awsCredentials.sessionToken = credentials.sessionToken;
+    }
+    
+    const signedRequest = aws4.sign(request, awsCredentials);
 
     const response = await fetch(url.href, {
       method: 'POST',
