@@ -115,7 +115,7 @@ export default function ChatInterface() {
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: `Presentation generated successfully! You can download it from: ${result.download_url || 'S3 bucket'}`,
+          content: `${result.message} \nPresentation name: ${result.presentation_name}`,
           timestamp: new Date(),
         };
         
@@ -149,7 +149,7 @@ export default function ChatInterface() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-full bg-gray-50">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="text-center text-gray-500 mt-20">

@@ -1,17 +1,21 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
-export async function callLambdaFunction(functionPath: string, data: any) {
+export async function callLambdaFunction(functionPath: string, data: any, method: string = 'POST') {
   try {
     const url = new URL(`${API_URL}${functionPath}`);
-    const body = JSON.stringify(data);
-
-    const response = await fetch(url.href, {
-      method: 'POST',
+    
+    const options: RequestInit = {
+      method,
       headers: {
         'Content-Type': 'application/json',
       },
-      body,
-    });
+    };
+
+    if (method !== 'GET' && data) {
+      options.body = JSON.stringify(data);
+    }
+
+    const response = await fetch(url.href, options);
 
     if (!response.ok) {
       throw new Error(`API call failed: ${response.statusText}`);
@@ -34,6 +38,10 @@ export async function generatePresentation(prompt: string) {
     template_key: `templates/${template}.pptx`,
     document_key: 'documents/sample.pdf', // This should be dynamic based on uploaded files
   });
+}
+
+export async function listPresentations() {
+  return callLambdaFunction('/presentations', null, 'GET');
 }
 
 export function isPresentationRequest(message: string): boolean {

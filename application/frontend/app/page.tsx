@@ -2,6 +2,7 @@
 
 import AuthProvider from '@/components/AuthProvider';
 import ChatInterface from '@/components/ChatInterface';
+import PresentationSidebar from '@/components/PresentationSidebar';
 import UserMenu from '@/components/UserMenu';
 
 export default function Home() {
@@ -18,8 +19,11 @@ export default function Home() {
             </div>
           </div>
         </header>
-        <main className="max-w-7xl mx-auto">
-          <ChatInterface />
+        <main className="flex h-[calc(100vh-4rem)]">
+          <PresentationSidebar />
+          <div className="flex-1">
+            <ChatInterface />
+          </div>
         </main>
       </div>
     </AuthProvider>
