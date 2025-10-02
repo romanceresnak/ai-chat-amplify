@@ -6,45 +6,14 @@ const AWS_REGION = process.env.NEXT_PUBLIC_AWS_REGION || 'eu-west-1';
 
 export async function callLambdaFunction(functionPath: string, data: any) {
   try {
-    const session = await fetchAuthSession();
-    const credentials = session.credentials;
-
-    if (!credentials) {
-      throw new Error('No AWS credentials available');
-    }
-
     const url = new URL(`${API_URL}${functionPath}`);
     const body = JSON.stringify(data);
 
-    // Prepare request for AWS4 signing
-    const request = {
-      host: url.hostname,
+    const response = await fetch(url.href, {
       method: 'POST',
-      url: url.href,
-      path: url.pathname + url.search,
       headers: {
         'Content-Type': 'application/json',
       },
-      body,
-      service: 'execute-api',
-      region: AWS_REGION,
-    };
-
-    // Sign the request with AWS credentials
-    const awsCredentials: any = {
-      accessKeyId: credentials.accessKeyId,
-      secretAccessKey: credentials.secretAccessKey,
-    };
-    
-    if (credentials.sessionToken) {
-      awsCredentials.sessionToken = credentials.sessionToken;
-    }
-    
-    const signedRequest = aws4.sign(request, awsCredentials);
-
-    const response = await fetch(url.href, {
-      method: 'POST',
-      headers: signedRequest.headers as HeadersInit,
       body,
     });
 
