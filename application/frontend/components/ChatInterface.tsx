@@ -42,7 +42,7 @@ export default function ChatInterface() {
     try {
       const session = await fetchAuthSession();
       const client = new BedrockRuntimeClient({
-        region: 'us-east-1', // Change according to your region
+        region: 'eu-west-1', // Your AWS region
         credentials: session.credentials,
       });
       setBedrockClient(client);
@@ -131,7 +131,7 @@ export default function ChatInterface() {
 
       // Call Bedrock Claude model
       const command = new InvokeModelCommand({
-        modelId: 'anthropic.claude-3-sonnet-20240229-v1:0',
+        modelId: 'eu.anthropic.claude-3-sonnet-20240229-v1:0',
         body: JSON.stringify({
           anthropic_version: 'bedrock-2023-05-31',
           max_tokens: 4096,
@@ -164,7 +164,7 @@ export default function ChatInterface() {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Sorry, an error occurred while processing your request. Please make sure you have access to AWS Bedrock in the us-east-1 region.',
+        content: 'Sorry, an error occurred while processing your request. Please make sure you have access to AWS Bedrock Claude models in the eu-west-1 region.',
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
