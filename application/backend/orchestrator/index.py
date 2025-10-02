@@ -13,12 +13,9 @@ logger.setLevel(logging.INFO)
 
 # Initialize AWS clients
 s3 = boto3.client('s3')
-bedrock_runtime = boto3.client('bedrock-runtime')
-bedrock_agent = boto3.client('bedrock-agent-runtime')
 
 # Environment variables
 ENVIRONMENT = os.environ['ENVIRONMENT']
-BEDROCK_KB_ID = os.environ['BEDROCK_KB_ID']
 DOCUMENTS_BUCKET = os.environ['DOCUMENTS_BUCKET']
 TEMPLATES_BUCKET = os.environ['TEMPLATES_BUCKET']
 OUTPUT_BUCKET = os.environ['OUTPUT_BUCKET']
@@ -106,29 +103,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             })
         }
 
-def retrieve_from_knowledge_base(document_key: str, user_instructions: str) -> Dict[str, Any]:
-    """
-    Retrieve relevant information from Bedrock Knowledge Base.
-    """
-    try:
-        response = bedrock_agent.retrieve_and_generate(
-            input={
-                'text': f"Analyze the financial document {document_key} and extract key insights. {user_instructions}"
-            },
-            retrieveAndGenerateConfiguration={
-                'type': 'KNOWLEDGE_BASE',
-                'knowledgeBaseConfiguration': {
-                    'knowledgeBaseId': BEDROCK_KB_ID,
-                    'modelArn': 'arn:aws:bedrock:eu-west-1::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0'
-                }
-            }
-        )
-        
-        return response
-        
-    except Exception as e:
-        logger.error(f"Error retrieving from knowledge base: {str(e)}")
-        raise
 
 def extract_financial_insights(kb_response: Dict[str, Any], document_key: str) -> Dict[str, Any]:
     """
