@@ -150,6 +150,7 @@ def extract_financial_insights(kb_response: Dict[str, Any], document_key: str) -
             accept='application/json',
             body=json.dumps({
                 'anthropic_version': 'bedrock-2023-05-31',
+                'system': 'You are a JSON data generator. Always respond with valid JSON only. Never include explanatory text, apologies, or anything other than the requested JSON object.',
                 'messages': [{
                     'role': 'user',
                     'content': prompt.format(
@@ -219,6 +220,7 @@ def generate_content_structure(financial_insights: Dict[str, Any],
             accept='application/json',
             body=json.dumps({
                 'anthropic_version': 'bedrock-2023-05-31',
+                'system': 'You are a JSON data generator. Always respond with valid JSON only. Never include explanatory text, apologies, or anything other than the requested JSON object.',
                 'messages': [{
                     'role': 'user',
                     'content': prompt.format(
@@ -228,7 +230,7 @@ def generate_content_structure(financial_insights: Dict[str, Any],
                     )
                 }],
                 'max_tokens': 3000,
-                'temperature': 0.3
+                'temperature': 0.1
             })
         )
         
@@ -297,6 +299,7 @@ def generate_slide_content(slide: Dict[str, Any],
             accept='application/json',
             body=json.dumps({
                 'anthropic_version': 'bedrock-2023-05-31',
+                'system': 'You are a JSON data generator. Always respond with valid JSON only. Never include explanatory text, apologies, or anything other than the requested JSON object.',
                 'messages': [{
                     'role': 'user',
                     'content': prompt.format(
@@ -305,7 +308,7 @@ def generate_slide_content(slide: Dict[str, Any],
                     )
                 }],
                 'max_tokens': 2000,
-                'temperature': 0.2
+                'temperature': 0.1
             })
         )
         
@@ -460,38 +463,29 @@ def get_default_prompt(prompt_name: str) -> str:
         - Include 3-5 slides maximum
         - Use appropriate slide types: title, executive_summary, chart, table, content""",
         
-        'slide_content': """You are a presentation content generator. Your task is to create PowerPoint slide content in valid JSON format.
+        'slide_content': """Create slide content for: {slide_structure}
 
-        Slide Structure: {slide_structure}
-        Financial Insights: {financial_insights}
-        
-        Generate content for this slide and return ONLY valid JSON in this exact format:
-        {{
-            "title": "Slide title here",
-            "content": {{
-                "text": "Main slide content text",
-                "highlights": ["Bullet point 1", "Bullet point 2", "Bullet point 3"]
-            }},
-            "charts": [{{
-                "chart_type": "bar",
-                "title": "Chart Title",
-                "data": {{
-                    "categories": ["Q1", "Q2", "Q3", "Q4"],
-                    "series": [{{
-                        "name": "Series 1",
-                        "values": [100, 150, 200, 175]
-                    }}]
-                }}
-            }}],
-            "tables": [],
-            "notes": "Speaker notes for this slide"
+Using data: {financial_insights}
+
+Return JSON:
+{{
+    "title": "Loan Portfolio Analysis", 
+    "content": {{
+        "text": "Key financial metrics and performance indicators",
+        "highlights": ["Total loans $450M", "Yield 5.26%", "Growth 15% YoY"]
+    }},
+    "charts": [{{
+        "chart_type": "combo",
+        "title": "Loan Balances and Yield",
+        "data": {{
+            "categories": ["2Q19", "3Q19", "4Q19", "1Q20", "2Q20"],
+            "bar_series": [{{"name": "Loan Balance ($M)", "values": [180, 195, 210, 225, 455]}}],
+            "line_series": [{{"name": "Yield %", "values": [5.8, 5.7, 5.6, 5.76, 5.26]}}]
         }}
-        
-        Requirements:
-        - Return ONLY the JSON object, no other text
-        - Use realistic financial data if charts are needed
-        - Make content relevant to the slide type
-        - Ensure all JSON is valid and properly formatted"""
+    }}],
+    "highlights": ["Total loan increase $229.9M vs 1Q20", "$215.3M from PPP loans", "2,000+ PPP loans closed"],
+    "notes": "Strong growth driven by PPP lending program"
+}}"""
     }
     
     return prompts.get(prompt_name, "")
