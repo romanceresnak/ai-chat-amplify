@@ -73,14 +73,18 @@ All data is predefined and static.
         # Save to S3 as text file
         output_key = f"{presentation_id}/presentation_{timestamp}.txt"
         
-        s3.put_object(
-            Bucket=OUTPUT_BUCKET,
-            Key=output_key,
-            Body=text_content.encode('utf-8'),
-            ContentType='text/plain'
-        )
-        
-        logger.info(f"Generated text presentation: s3://{OUTPUT_BUCKET}/{output_key}")
+        try:
+            s3.put_object(
+                Bucket=OUTPUT_BUCKET,
+                Key=output_key,
+                Body=text_content.encode('utf-8'),
+                ContentType='text/plain'
+            )
+            logger.info(f"Generated text presentation: s3://{OUTPUT_BUCKET}/{output_key}")
+        except Exception as s3_error:
+            logger.error(f"S3 upload error: {str(s3_error)}")
+            # Continue without S3 upload
+            output_key = f"ERROR_UPLOADING_TO_S3_{presentation_id}"
         
         return {
             'statusCode': 200,
