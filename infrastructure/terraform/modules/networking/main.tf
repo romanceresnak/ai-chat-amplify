@@ -155,3 +155,46 @@ resource "aws_security_group" "vpc_endpoints" {
     Name = "${var.project_name}-${var.environment}-vpc-endpoints-sg"
   }
 }
+
+# VPC Endpoints for Bedrock
+resource "aws_vpc_endpoint" "bedrock_runtime" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.eu-west-1.bedrock-runtime"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  
+  private_dns_enabled = true
+  
+  tags = {
+    Name = "${var.project_name}-${var.environment}-bedrock-runtime-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "bedrock_agent_runtime" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.eu-west-1.bedrock-agent-runtime"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  
+  private_dns_enabled = true
+  
+  tags = {
+    Name = "${var.project_name}-${var.environment}-bedrock-agent-runtime-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "bedrock_agent" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.eu-west-1.bedrock-agent"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  
+  private_dns_enabled = true
+  
+  tags = {
+    Name = "${var.project_name}-${var.environment}-bedrock-agent-endpoint"
+  }
+}

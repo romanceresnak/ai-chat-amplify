@@ -57,6 +57,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
       {
         Effect = "Allow"
         Action = [
+          "bedrock:InvokeModel",
           "bedrock:Retrieve",
           "bedrock:RetrieveAndGenerate"
         ]
@@ -69,6 +70,13 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "bedrock-agent:RetrieveAndGenerate"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = "arn:aws:lambda:*:*:function:scribbe-ai-*-template-processor"
       }
     ]
   })
