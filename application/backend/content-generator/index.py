@@ -10,8 +10,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Initialize AWS clients
-bedrock_runtime = boto3.client('bedrock-runtime')
-bedrock_agent = boto3.client('bedrock-agent-runtime')
+# Bedrock clients removed - using mock data only
 
 # Environment variables
 ENVIRONMENT = os.environ['ENVIRONMENT']
@@ -296,61 +295,17 @@ Return an array of chart specifications in JSON format:
 
 def invoke_bedrock_model(prompt: str, temperature: float = 0.3, max_tokens: int = 4000) -> str:
     """
-    Invoke Bedrock model with the given prompt.
+    Return mock data instead of calling Bedrock.
     """
-    try:
-        response = bedrock_runtime.invoke_model(
-            modelId='eu.anthropic.claude-3-5-sonnet-20240620-v1:0',
-            contentType='application/json',
-            accept='application/json',
-            body=json.dumps({
-                'anthropic_version': 'bedrock-2023-05-31',
-                'messages': [{
-                    'role': 'user',
-                    'content': prompt
-                }],
-                'max_tokens': max_tokens,
-                'temperature': temperature
-            })
-        )
-        
-        result = json.loads(response['body'].read())
-        return result['content'][0]['text']
-        
-    except Exception as e:
-        logger.error(f"Error invoking Bedrock model: {str(e)}")
-        raise
+    logger.info("Using mock data instead of Bedrock")
+    return '{"title": "Mock Content", "content": "This is mock content generated without Bedrock", "charts": [], "tables": []}'
 
 def query_knowledge_base(query: str) -> Dict[str, Any]:
     """
-    Query the Bedrock knowledge base for relevant information.
+    Return mock knowledge base results.
     """
-    try:
-        response = bedrock_agent.retrieve(
-            knowledgeBaseId=BEDROCK_KB_ID,
-            retrievalQuery={
-                'text': query
-            },
-            retrievalConfiguration={
-                'vectorSearchConfiguration': {
-                    'numberOfResults': 5
-                }
-            }
-        )
-        
-        results = []
-        for result in response.get('retrievalResults', []):
-            results.append({
-                'content': result.get('content', {}).get('text', ''),
-                'score': result.get('score', 0),
-                'metadata': result.get('metadata', {})
-            })
-        
-        return {'results': results}
-        
-    except Exception as e:
-        logger.error(f"Error querying knowledge base: {str(e)}")
-        return {'results': []}
+    logger.info("Using mock knowledge base results")
+    return {'results': [{'content': 'Mock knowledge base result', 'score': 1.0, 'metadata': {}}]}
 
 def validate_json_response(response: str) -> str:
     """
