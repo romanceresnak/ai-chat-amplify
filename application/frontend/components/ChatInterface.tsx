@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+// Bedrock removed - using mock responses only
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { uploadData } from 'aws-amplify/storage';
 import { useDropzone } from 'react-dropzone';
@@ -29,28 +29,13 @@ export default function ChatInterface() {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [bedrockClient, setBedrockClient] = useState<BedrockRuntimeClient | null>(null);
-
-  useEffect(() => {
-    initializeBedrockClient();
-  }, []);
+  // Bedrock client removed - using mock responses only
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  const initializeBedrockClient = async () => {
-    try {
-      const session = await fetchAuthSession();
-      const client = new BedrockRuntimeClient({
-        region: 'eu-west-1', // Your AWS region
-        credentials: session.credentials,
-      });
-      setBedrockClient(client);
-    } catch (error) {
-      console.error('Error initializing Bedrock client:', error);
-    }
-  };
+  // Bedrock client initialization removed
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -104,10 +89,6 @@ export default function ChatInterface() {
 
   const sendMessage = async () => {
     if (!input.trim() && uploadedFiles.length === 0) return;
-    if (!bedrockClient) {
-      console.error('Bedrock client not initialized');
-      return;
-    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -140,39 +121,15 @@ export default function ChatInterface() {
         
         setMessages(prev => [...prev, assistantMessage]);
       } else {
-        // Regular chat with Bedrock
-        let prompt = userMessage.content;
-        if (uploadedFiles.length > 0) {
-          prompt += `\\n\\nAttached files: ${uploadedFiles.map(f => f.name).join(', ')}`;
-        }
+        // Regular chat - use mock responses instead of Bedrock
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: 'This is a mock chat response. Bedrock has been disabled. For presentation generation, please use keywords like "create presentation" or "generate slide".',
+          timestamp: new Date(),
+        };
 
-        // Call Bedrock Claude model
-        const command = new InvokeModelCommand({
-        modelId: 'eu.anthropic.claude-3-5-sonnet-20240620-v1:0',
-        body: JSON.stringify({
-          anthropic_version: 'bedrock-2023-05-31',
-          max_tokens: 4096,
-          messages: [
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-        }),
-        contentType: 'application/json',
-      });
-
-      const response = await bedrockClient.send(command);
-      const responseData = JSON.parse(new TextDecoder().decode(response.body));
-      
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: responseData.content[0].text,
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
+        setMessages(prev => [...prev, assistantMessage]);
       }
 
       // Clear uploaded files after sending
