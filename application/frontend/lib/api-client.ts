@@ -1,8 +1,4 @@
-import { fetchAuthSession } from 'aws-amplify/auth';
-import * as aws4 from 'aws4';
-
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-const AWS_REGION = process.env.NEXT_PUBLIC_AWS_REGION || 'eu-west-1';
 
 export async function callLambdaFunction(functionPath: string, data: any) {
   try {
