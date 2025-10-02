@@ -32,6 +32,58 @@ resource "aws_api_gateway_integration" "orchestrator" {
   uri                    = var.lambda_invoke_arns.orchestrator
 }
 
+# CORS Configuration
+resource "aws_api_gateway_method" "presentations_options" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.presentations.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "presentations_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.presentations.id
+  http_method = aws_api_gateway_method.presentations_options.http_method
+
+  type = "MOCK"
+
+  request_templates = {
+    "application/json" = jsonencode({
+      statusCode = 200
+    })
+  }
+}
+
+resource "aws_api_gateway_method_response" "presentations_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.presentations.id
+  http_method = aws_api_gateway_method.presentations_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "presentations_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.presentations.id
+  http_method = aws_api_gateway_method.presentations_options.http_method
+  status_code = aws_api_gateway_method_response.presentations_options.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
 # Lambda permissions for API Gateway
 resource "aws_lambda_permission" "api_gateway" {
   statement_id  = "AllowExecutionFromAPIGateway"
@@ -50,6 +102,10 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_resource.presentations,
       aws_api_gateway_method.create_presentation,
       aws_api_gateway_integration.orchestrator,
+      aws_api_gateway_method.presentations_options,
+      aws_api_gateway_integration.presentations_options,
+      aws_api_gateway_method_response.presentations_options,
+      aws_api_gateway_integration_response.presentations_options,
     ]))
   }
 

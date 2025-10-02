@@ -123,6 +123,10 @@ export default function ChatInterface() {
 
     try {
       // Check if this is a presentation generation request
+      console.log('Checking if presentation request:', userMessage.content);
+      console.log('Is presentation request?', isPresentationRequest(userMessage.content));
+      console.log('API URL:', process.env.NEXT_PUBLIC_API_URL);
+      
       if (isPresentationRequest(userMessage.content)) {
         // Call Lambda function for presentation generation
         const result = await generatePresentation(userMessage.content);

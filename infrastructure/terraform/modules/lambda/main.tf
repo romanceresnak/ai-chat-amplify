@@ -128,3 +128,12 @@ resource "aws_cloudwatch_event_target" "lambda_target" {
   target_id = "OrchestratorLambdaTarget"
   arn       = aws_lambda_function.orchestrator.arn
 }
+
+# Permission for EventBridge to invoke Lambda
+resource "aws_lambda_permission" "eventbridge" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.orchestrator.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.scheduled_processing.arn
+}
