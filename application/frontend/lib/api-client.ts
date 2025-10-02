@@ -67,19 +67,15 @@ export async function generatePresentation(prompt: string) {
 }
 
 export function isPresentationRequest(message: string): boolean {
-  const keywords = [
-    'create presentation',
-    'generate presentation',
-    'make presentation',
-    'create slide',
-    'generate slide',
-    'make slide',
-    'powerpoint',
-    'ppt',
-    'presentation about',
-    'slide about'
-  ];
-  
   const lowerMessage = message.toLowerCase();
-  return keywords.some(keyword => lowerMessage.includes(keyword));
+  
+  // Check for slide-related keywords
+  const slideKeywords = ['slide', 'powerpoint', 'ppt', 'presentation'];
+  const actionKeywords = ['create', 'generate', 'make', 'design', 'build'];
+  
+  // Check if message contains both slide and action keywords
+  const hasSlideKeyword = slideKeywords.some(keyword => lowerMessage.includes(keyword));
+  const hasActionKeyword = actionKeywords.some(keyword => lowerMessage.includes(keyword));
+  
+  return hasSlideKeyword && hasActionKeyword;
 }
