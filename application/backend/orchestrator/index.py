@@ -84,6 +84,11 @@ All data is predefined and static.
         
         return {
             'statusCode': 200,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST'
+            },
             'body': json.dumps({
                 'presentation_id': presentation_id,
                 'output_url': f"s3://{OUTPUT_BUCKET}/{output_key}",
@@ -96,6 +101,11 @@ All data is predefined and static.
         logger.error(f"Error in simplified orchestrator: {str(e)}", exc_info=True)
         return {
             'statusCode': 500,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST'
+            },
             'body': json.dumps({
                 'error': 'Internal server error',
                 'message': str(e)
