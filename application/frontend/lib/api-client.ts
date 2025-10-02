@@ -1,19 +1,46 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
+import * as aws4 from 'aws4';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const AWS_REGION = process.env.NEXT_PUBLIC_AWS_REGION || 'eu-west-1';
 
 export async function callLambdaFunction(functionPath: string, data: any) {
   try {
     const session = await fetchAuthSession();
-    const token = session.tokens?.idToken?.toString();
+    const credentials = session.credentials;
 
-    const response = await fetch(`${API_URL}${functionPath}`, {
+    if (!credentials) {
+      throw new Error('No AWS credentials available');
+    }
+
+    const url = new URL(`${API_URL}${functionPath}`);
+    const body = JSON.stringify(data);
+
+    // Prepare request for AWS4 signing
+    const request = {
+      host: url.hostname,
       method: 'POST',
+      url: url.href,
+      path: url.pathname + url.search,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify(data),
+      body,
+      service: 'execute-api',
+      region: AWS_REGION,
+    };
+
+    // Sign the request with AWS credentials
+    const signedRequest = aws4.sign(request, {
+      accessKeyId: credentials.accessKeyId,
+      secretAccessKey: credentials.secretAccessKey,
+      sessionToken: credentials.sessionToken,
+    });
+
+    const response = await fetch(url.href, {
+      method: 'POST',
+      headers: signedRequest.headers as HeadersInit,
+      body,
     });
 
     if (!response.ok) {
@@ -32,7 +59,7 @@ export async function generatePresentation(prompt: string) {
   const templateMatch = prompt.match(/template[:\s]+(\w+)/i);
   const template = templateMatch ? templateMatch[1] : 'default';
   
-  return callLambdaFunction('/orchestrator', {
+  return callLambdaFunction('/presentations', {
     instructions: prompt,
     template_key: `templates/${template}.pptx`,
     document_key: 'documents/sample.pdf', // This should be dynamic based on uploaded files
