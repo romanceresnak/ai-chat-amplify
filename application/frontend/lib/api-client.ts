@@ -29,14 +29,13 @@ export async function callLambdaFunction(functionPath: string, data: any, method
 }
 
 export async function generatePresentation(prompt: string) {
-  // Parse the prompt to extract template and instructions
-  const templateMatch = prompt.match(/template[:\s]+(\w+)/i);
-  const template = templateMatch ? templateMatch[1] : 'default';
-  
+  // Always use modify mode with the South Plains presentation
   return callLambdaFunction('/presentations', {
     instructions: prompt,
-    template_key: `templates/${template}.pptx`,
-    document_key: 'documents/sample.pdf', // This should be dynamic based on uploaded files
+    mode: 'modify',
+    template_key: 'PUBLIC IP South Plains (1).pptx',
+    document_key: 'documents/sample.pdf',
+    analyze_structure: false
   });
 }
 
@@ -47,9 +46,15 @@ export async function listPresentations() {
 export function isPresentationRequest(message: string): boolean {
   const lowerMessage = message.toLowerCase();
   
+  // Check for slide number pattern (e.g., "slide 23:")
+  const slideNumberPattern = /slide\s+\d+/i;
+  if (slideNumberPattern.test(message)) {
+    return true;
+  }
+  
   // Check for slide-related keywords
   const slideKeywords = ['slide', 'powerpoint', 'ppt', 'presentation'];
-  const actionKeywords = ['create', 'generate', 'make', 'design', 'build'];
+  const actionKeywords = ['create', 'generate', 'make', 'design', 'build', 'update', 'modify', 'edit'];
   
   // Check if message contains both slide and action keywords
   const hasSlideKeyword = slideKeywords.some(keyword => lowerMessage.includes(keyword));

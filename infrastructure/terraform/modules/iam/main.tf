@@ -76,7 +76,11 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Action = [
           "lambda:InvokeFunction"
         ]
-        Resource = "arn:aws:lambda:*:*:function:scribbe-ai-*-template-processor"
+        Resource = [
+          "arn:aws:lambda:*:*:function:scribbe-ai-*-template-processor",
+          "arn:aws:lambda:*:*:function:scribbe-ai-*-content-generator",
+          "arn:aws:lambda:*:*:function:scribbe-ai-*-orchestrator"
+        ]
       }
     ]
   })

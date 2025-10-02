@@ -78,10 +78,8 @@ module "lambda_functions" {
   lambda_role_arn      = module.iam.lambda_role_arn
   bedrock_kb_id        = module.bedrock.knowledge_base_id
   s3_buckets          = module.s3.bucket_names
-  vpc_config = {
-    subnet_ids         = module.networking.private_subnet_ids
-    security_group_ids = [module.networking.lambda_security_group_id]
-  }
+  # Removed VPC config to allow internet access for S3 operations
+  vpc_config = null
 }
 
 # API Gateway
