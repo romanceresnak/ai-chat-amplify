@@ -91,9 +91,22 @@ def download_template(template_key: str) -> str:
     try:
         local_path = f"/tmp/template_{datetime.now().timestamp()}.pptx"
         
+        # Handle different template_key formats
+        if template_key.startswith('templates/') and template_key.endswith('.pptx'):
+            # Frontend sends "templates/default.pptx", but file is at "default.pptx"
+            template_name = template_key.replace('templates/', '')
+            s3_key = template_name
+        elif template_key.endswith('.pptx'):
+            # Direct file path like "default.pptx"
+            s3_key = template_key
+        else:
+            # Directory path like "default"
+            s3_key = f"{template_key}.pptx"
+        
+        logger.info(f"Downloading template from s3://{TEMPLATES_BUCKET}/{s3_key}")
         s3.download_file(
             Bucket=TEMPLATES_BUCKET,
-            Key=f"{template_key}/template.pptx",
+            Key=s3_key,
             Filename=local_path
         )
         
