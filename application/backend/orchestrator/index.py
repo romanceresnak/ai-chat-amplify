@@ -49,16 +49,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         presentation_id = str(uuid.uuid4())
         timestamp = datetime.utcnow().isoformat()
         
-        # Step 1: Skip Knowledge Base for now and use mock data
-        logger.info(f"Using mock document analysis for testing")
-        kb_response = {
-            "output": {
-                "text": "This is a mock financial document analysis for testing purposes. It contains loan portfolio information with metrics about loan balances, yields, and financial trends."
-            }
-        }
+        # Step 1: Skip all AI processing and use predefined data
+        logger.info(f"Using completely predefined data for reliable PowerPoint generation")
         
         # Step 2: Extract financial data and insights
-        financial_insights = extract_financial_insights(kb_response, document_key)
+        financial_insights = extract_financial_insights({}, document_key)
         
         # Step 3: Generate content structure based on template
         content_structure = generate_content_structure(
