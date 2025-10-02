@@ -99,19 +99,19 @@ resource "aws_lambda_function" "template_processor" {
 # Archive files for Lambda deployment
 data "archive_file" "orchestrator" {
   type        = "zip"
-  source_dir  = "${path.root}/lambda-functions/orchestrator"
+  source_dir  = "${path.root}/../../application/backend/orchestrator"
   output_path = "${path.module}/orchestrator.zip"
 }
 
 data "archive_file" "content_generator" {
   type        = "zip"
-  source_dir  = "${path.root}/lambda-functions/content-generator"
+  source_dir  = "${path.root}/../../application/backend/content-generator"
   output_path = "${path.module}/content-generator.zip"
 }
 
 data "archive_file" "template_processor" {
   type        = "zip"
-  source_dir  = "${path.root}/lambda-functions/template-processor"
+  source_dir  = "${path.root}/../../application/backend/template-processor"
   output_path = "${path.module}/template-processor.zip"
 }
 

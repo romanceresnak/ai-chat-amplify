@@ -122,6 +122,7 @@ module "amplify_hosting" {
   aws_region                  = var.aws_region
   storage_bucket_name         = module.cognito.storage_bucket_name
   custom_domain              = var.custom_domain
+  api_gateway_url            = module.api_gateway.api_url
   
   tags = {
     Environment = var.environment

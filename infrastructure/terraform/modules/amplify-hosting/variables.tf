@@ -66,3 +66,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "api_gateway_url" {
+  description = "API Gateway URL for Lambda functions"
+  type        = string
+  default     = ""
+}

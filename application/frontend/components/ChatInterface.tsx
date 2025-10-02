@@ -6,6 +6,7 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 import { uploadData } from 'aws-amplify/storage';
 import { useDropzone } from 'react-dropzone';
 import { Send, Upload, X, FileText, Loader2 } from 'lucide-react';
+import { isPresentationRequest, generatePresentation } from '@/lib/api-client';
 
 interface Message {
   id: string;
@@ -121,16 +122,28 @@ export default function ChatInterface() {
     setIsLoading(true);
 
     try {
-      // Note: Pre produkciu môžete pridať ukladanie do DynamoDB
+      // Check if this is a presentation generation request
+      if (isPresentationRequest(userMessage.content)) {
+        // Call Lambda function for presentation generation
+        const result = await generatePresentation(userMessage.content);
+        
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: `Presentation generated successfully! You can download it from: ${result.download_url || 'S3 bucket'}`,
+          timestamp: new Date(),
+        };
+        
+        setMessages(prev => [...prev, assistantMessage]);
+      } else {
+        // Regular chat with Bedrock
+        let prompt = userMessage.content;
+        if (uploadedFiles.length > 0) {
+          prompt += `\\n\\nAttached files: ${uploadedFiles.map(f => f.name).join(', ')}`;
+        }
 
-      // Prepare prompt for Bedrock
-      let prompt = userMessage.content;
-      if (uploadedFiles.length > 0) {
-        prompt += `\\n\\nAttached files: ${uploadedFiles.map(f => f.name).join(', ')}`;
-      }
-
-      // Call Bedrock Claude model
-      const command = new InvokeModelCommand({
+        // Call Bedrock Claude model
+        const command = new InvokeModelCommand({
         modelId: 'eu.anthropic.claude-3-5-sonnet-20240620-v1:0',
         body: JSON.stringify({
           anthropic_version: 'bedrock-2023-05-31',
@@ -156,6 +169,7 @@ export default function ChatInterface() {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      }
 
       // Clear uploaded files after sending
       setUploadedFiles([]);

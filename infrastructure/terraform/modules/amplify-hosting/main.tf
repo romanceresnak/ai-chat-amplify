@@ -45,7 +45,8 @@ resource "aws_amplify_app" "main" {
     NEXT_PUBLIC_IDENTITY_POOL_ID    = var.cognito_identity_pool_id
     NEXT_PUBLIC_AWS_REGION          = var.aws_region
     NEXT_PUBLIC_STORAGE_BUCKET      = var.storage_bucket_name
-    NEXT_PUBLIC_BEDROCK_REGION      = "us-east-1"
+    NEXT_PUBLIC_BEDROCK_REGION      = var.aws_region
+    NEXT_PUBLIC_API_URL             = var.api_gateway_url
   }
 
   # Custom rules for Next.js App - removed as they interfere with SSR
@@ -79,7 +80,8 @@ resource "aws_amplify_branch" "main" {
     NEXT_PUBLIC_IDENTITY_POOL_ID    = var.cognito_identity_pool_id
     NEXT_PUBLIC_AWS_REGION          = var.aws_region
     NEXT_PUBLIC_STORAGE_BUCKET      = var.storage_bucket_name
-    NEXT_PUBLIC_BEDROCK_REGION      = "us-east-1"
+    NEXT_PUBLIC_BEDROCK_REGION      = var.aws_region
+    NEXT_PUBLIC_API_URL             = var.api_gateway_url
   }
 }
 

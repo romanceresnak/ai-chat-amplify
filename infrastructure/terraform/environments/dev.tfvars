@@ -14,4 +14,4 @@ project_name = "scribbe-ai"
 repository_url  = "https://github.com/romanceresnak/ai-chat-amplify"
 git_branch      = "main"
 custom_domain   = ""  # Optional: "yourdomain.com"
-github_token    = ""  # Add your GitHub token here for Amplify deployment
+github_token    = ""
