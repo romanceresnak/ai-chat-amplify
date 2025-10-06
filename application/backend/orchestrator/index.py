@@ -25,7 +25,7 @@ bedrock = boto3.client('bedrock-runtime', region_name='eu-west-1')
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
 OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', 'scribbe-ai-dev-output')
 TEMPLATE_PROCESSOR_ARN = os.environ.get('TEMPLATE_PROCESSOR_ARN', f'arn:aws:lambda:eu-west-1:873478944520:function:scribbe-ai-{ENVIRONMENT}-template-processor')
-BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
+BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'eu.anthropic.claude-3-5-sonnet-20240620-v1:0')
 
 def create_basic_powerpoint(instructions: str, timestamp: str) -> bytes:
     """Create a basic PowerPoint file using OpenXML format without external dependencies"""
@@ -839,7 +839,8 @@ class ChatAgent(Agent):
                     "max_tokens": 1000,
                     "temperature": 0.7,
                     "anthropic_version": "bedrock-2023-05-31"
-                })
+                }),
+                contentType='application/json'
             )
             
             # Parse response
@@ -921,7 +922,8 @@ class DocumentAgent(Agent):
                     "max_tokens": 1500,
                     "temperature": 0.3,
                     "anthropic_version": "bedrock-2023-05-31"
-                })
+                }),
+                contentType='application/json'
             )
             
             response_body = json.loads(response['body'].read())

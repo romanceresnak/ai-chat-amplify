@@ -174,13 +174,13 @@ export default function ChatInterface() {
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[70%] rounded-lg p-4 ${
+                className={`max-w-md rounded-lg p-4 ${
                   message.role === 'user'
                     ? 'bg-blue-600 text-white'
                     : 'bg-white border border-gray-200'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{message.content}</p>
+                <p className="whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
                 {message.files && message.files.length > 0 && (
                   <div className="mt-2 text-sm opacity-75">
                     <FileText className="inline w-4 h-4 mr-1" />
