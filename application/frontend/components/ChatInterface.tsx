@@ -108,29 +108,40 @@ export default function ChatInterface() {
       console.log('Is presentation request?', isPresentationRequest(userMessage.content));
       console.log('API URL:', process.env.NEXT_PUBLIC_API_URL);
       
-      if (isPresentationRequest(userMessage.content)) {
-        // Call Lambda function for presentation generation
-        const result = await generatePresentation(userMessage.content);
-        
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: `${result.message} \nPresentation name: ${result.presentation_name}`,
-          timestamp: new Date(),
-        };
-        
-        setMessages(prev => [...prev, assistantMessage]);
-      } else {
-        // Regular chat - use mock responses instead of Bedrock
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: 'This is a mock chat response. Bedrock has been disabled. For presentation generation, please use keywords like "create presentation" or "generate slide".',
-          timestamp: new Date(),
-        };
-
-        setMessages(prev => [...prev, assistantMessage]);
+      // Always call the multi-agent API
+      const result = await generatePresentation(userMessage.content, uploadedFiles);
+      
+      // Format the response based on which agent handled it
+      let responseContent = result.message || '';
+      
+      // Add agent-specific formatting
+      if (result.agent === 'presentation' && result.presentation_name) {
+        responseContent += `\n\n📊 **Presentation Ready**: ${result.presentation_name}`;
+        if (result.download_url) {
+          responseContent += `\n[Download Now](${result.download_url})`;
+        }
+      } else if (result.agent === 'document') {
+        responseContent = `📄 **Document Analysis**\n\n${responseContent}`;
+        if (result.files_analyzed) {
+          responseContent += `\n\n*Analyzed ${result.files_analyzed} file(s)*`;
+        }
+      } else if (result.agent === 'chat') {
+        responseContent = `💬 ${responseContent}`;
       }
+      
+      // Add routing info in dev mode
+      if (process.env.NODE_ENV === 'development') {
+        responseContent += `\n\n*[Routed to: ${result.routed_to || 'unknown'} agent]*`;
+      }
+      
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: responseContent,
+        timestamp: new Date(),
+      };
+      
+      setMessages(prev => [...prev, assistantMessage]);
 
       // Clear uploaded files after sending
       setUploadedFiles([]);

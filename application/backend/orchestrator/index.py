@@ -2,7 +2,7 @@ import json
 import boto3
 import os
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 import uuid
 from datetime import datetime
 import zipfile
@@ -10,6 +10,7 @@ import io
 import xml.etree.ElementTree as ET
 import re
 import base64
+from abc import ABC, abstractmethod
 
 # Initialize logging
 logger = logging.getLogger()
@@ -18,11 +19,13 @@ logger.setLevel(logging.INFO)
 # Initialize AWS clients
 s3 = boto3.client('s3')
 lambda_client = boto3.client('lambda')
+bedrock = boto3.client('bedrock-runtime', region_name='eu-west-1')
 
 # Environment variables
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
 OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', 'scribbe-ai-dev-output')
 TEMPLATE_PROCESSOR_ARN = os.environ.get('TEMPLATE_PROCESSOR_ARN', f'arn:aws:lambda:eu-west-1:873478944520:function:scribbe-ai-{ENVIRONMENT}-template-processor')
+BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
 
 def create_basic_powerpoint(instructions: str, timestamp: str) -> bytes:
     """Create a basic PowerPoint file using OpenXML format without external dependencies"""
@@ -691,9 +694,318 @@ def list_presentations() -> Dict[str, Any]:
             'message': str(e)
         })
 
+# Agent Base Class
+class Agent(ABC):
+    """Base class for all agents"""
+    
+    @abstractmethod
+    def process(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Process the request and return response"""
+        pass
+
+# Presentation Agent
+class PresentationAgent(Agent):
+    """Agent for handling PowerPoint generation and modification"""
+    
+    def process(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Process presentation generation request"""
+        try:
+            instructions = request.get('instructions', '')
+            template_key = request.get('template_key', 'PUBLIC IP South Plains (1).pptx')
+            mode = request.get('mode', 'modify')
+            
+            # Generate unique presentation ID
+            presentation_id = str(uuid.uuid4())
+            timestamp = datetime.utcnow().isoformat()
+            
+            logger.info(f"PresentationAgent processing: {presentation_id}")
+            
+            if mode == 'modify' and template_key:
+                # Modify existing presentation
+                return self._modify_presentation(presentation_id, instructions, template_key)
+            else:
+                # Create new presentation
+                return self._create_presentation(presentation_id, instructions, timestamp)
+                
+        except Exception as e:
+            logger.error(f"PresentationAgent error: {str(e)}")
+            return {
+                'error': 'Failed to process presentation',
+                'message': str(e),
+                'agent': 'presentation'
+            }
+    
+    def _modify_presentation(self, presentation_id: str, instructions: str, template_key: str) -> Dict[str, Any]:
+        """Modify existing presentation"""
+        # Download existing PPTX from S3
+        template_response = s3.get_object(Bucket='scribbe-ai-dev-documents', Key=template_key)
+        existing_pptx_content = template_response['Body'].read()
+        
+        logger.info(f"Downloaded existing PPTX from S3: {template_key}")
+        
+        # Parse instructions to modifications
+        modifications = parse_instructions_to_modifications(instructions)
+        
+        # Apply modifications
+        modified_pptx_content = modify_existing_powerpoint(existing_pptx_content, modifications)
+        
+        # Save modified PowerPoint file to S3
+        output_key = f"{presentation_id}/PUBLIC_IP_South_Plains_modified.pptx"
+        
+        s3.put_object(
+            Bucket=OUTPUT_BUCKET,
+            Key=output_key,
+            Body=modified_pptx_content,
+            ContentType='application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        )
+        
+        logger.info(f"Modified PowerPoint saved to S3: {output_key}")
+        
+        # Generate presigned URL for download
+        download_url = s3.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': OUTPUT_BUCKET, 'Key': output_key},
+            ExpiresIn=3600
+        )
+        
+        return {
+            'presentation_id': presentation_id,
+            'output_url': f"s3://{OUTPUT_BUCKET}/{output_key}",
+            'message': 'Presentation modified successfully!',
+            'presentation_name': output_key.split('/')[-1],
+            'download_url': download_url,
+            'status': 'success',
+            'mode': 'modify',
+            'agent': 'presentation'
+        }
+    
+    def _create_presentation(self, presentation_id: str, instructions: str, timestamp: str) -> Dict[str, Any]:
+        """Create new presentation"""
+        pptx_content = create_basic_powerpoint(instructions, timestamp)
+        
+        # Save PowerPoint file to S3
+        output_key = f"{presentation_id}/presentation.pptx"
+        
+        s3.put_object(
+            Bucket=OUTPUT_BUCKET,
+            Key=output_key,
+            Body=pptx_content,
+            ContentType='application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        )
+        
+        logger.info(f"New PowerPoint saved to S3: {output_key}")
+        
+        # Generate presigned URL for download
+        download_url = s3.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': OUTPUT_BUCKET, 'Key': output_key},
+            ExpiresIn=3600
+        )
+        
+        return {
+            'presentation_id': presentation_id,
+            'output_url': f"s3://{OUTPUT_BUCKET}/{output_key}",
+            'message': 'Presentation created successfully!',
+            'presentation_name': output_key.split('/')[-1],
+            'download_url': download_url,
+            'status': 'success',
+            'mode': 'create',
+            'agent': 'presentation'
+        }
+
+# Chat Agent
+class ChatAgent(Agent):
+    """Agent for handling Q&A and general chat using Bedrock"""
+    
+    def process(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Process chat request using Bedrock Claude"""
+        try:
+            message = request.get('instructions', '')
+            files = request.get('files', [])
+            
+            logger.info(f"ChatAgent processing message: {message[:100]}...")
+            
+            # Prepare the prompt
+            prompt = self._prepare_prompt(message, files)
+            
+            # Call Bedrock Claude
+            response = bedrock.invoke_model(
+                modelId=BEDROCK_MODEL_ID,
+                body=json.dumps({
+                    "messages": [{
+                        "role": "user",
+                        "content": prompt
+                    }],
+                    "max_tokens": 1000,
+                    "temperature": 0.7,
+                    "anthropic_version": "bedrock-2023-05-31"
+                })
+            )
+            
+            # Parse response
+            response_body = json.loads(response['body'].read())
+            assistant_message = response_body['content'][0]['text']
+            
+            return {
+                'message': assistant_message,
+                'status': 'success',
+                'agent': 'chat'
+            }
+            
+        except Exception as e:
+            logger.error(f"ChatAgent error: {str(e)}")
+            return {
+                'error': 'Failed to process chat',
+                'message': 'Sorry, I encountered an error while processing your request.',
+                'agent': 'chat'
+            }
+    
+    def _prepare_prompt(self, message: str, files: List[str]) -> str:
+        """Prepare prompt with context from files if provided"""
+        prompt = message
+        
+        if files:
+            prompt += "\n\nContext from uploaded files:\n"
+            for file_key in files[:3]:  # Limit to first 3 files
+                try:
+                    # Download file content from S3
+                    file_obj = s3.get_object(Bucket='scribbe-ai-dev-storage', Key=file_key)
+                    content = file_obj['Body'].read().decode('utf-8', errors='ignore')
+                    prompt += f"\n--- File: {file_key} ---\n{content[:1000]}...\n"
+                except Exception as e:
+                    logger.error(f"Error reading file {file_key}: {str(e)}")
+        
+        return prompt
+
+# Document Agent
+class DocumentAgent(Agent):
+    """Agent for analyzing and extracting information from documents"""
+    
+    def process(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Process document analysis request"""
+        try:
+            message = request.get('instructions', '')
+            files = request.get('files', [])
+            
+            if not files:
+                return {
+                    'message': 'Please upload a document to analyze.',
+                    'status': 'error',
+                    'agent': 'document'
+                }
+            
+            logger.info(f"DocumentAgent analyzing {len(files)} files")
+            
+            # Analyze documents using Bedrock
+            analysis_prompt = f"""Analyze the following documents and {message}.
+            
+            Documents:"""
+            
+            for file_key in files:
+                try:
+                    # Download file content
+                    file_obj = s3.get_object(Bucket='scribbe-ai-dev-storage', Key=file_key)
+                    content = file_obj['Body'].read().decode('utf-8', errors='ignore')
+                    analysis_prompt += f"\n\n--- {file_key} ---\n{content[:2000]}"
+                except Exception as e:
+                    logger.error(f"Error reading file {file_key}: {str(e)}")
+            
+            # Call Bedrock for analysis
+            response = bedrock.invoke_model(
+                modelId=BEDROCK_MODEL_ID,
+                body=json.dumps({
+                    "messages": [{
+                        "role": "user",
+                        "content": analysis_prompt
+                    }],
+                    "max_tokens": 1500,
+                    "temperature": 0.3,
+                    "anthropic_version": "bedrock-2023-05-31"
+                })
+            )
+            
+            response_body = json.loads(response['body'].read())
+            analysis_result = response_body['content'][0]['text']
+            
+            return {
+                'message': analysis_result,
+                'status': 'success',
+                'agent': 'document',
+                'files_analyzed': len(files)
+            }
+            
+        except Exception as e:
+            logger.error(f"DocumentAgent error: {str(e)}")
+            return {
+                'error': 'Failed to analyze documents',
+                'message': str(e),
+                'agent': 'document'
+            }
+
+# Main Orchestrator Agent
+class OrchestratorAgent:
+    """Main orchestrator that routes requests to appropriate agents"""
+    
+    def __init__(self):
+        self.agents = {
+            'presentation': PresentationAgent(),
+            'chat': ChatAgent(),
+            'document': DocumentAgent()
+        }
+    
+    def route_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Route request to appropriate agent based on intent"""
+        try:
+            instructions = request.get('instructions', '')
+            files = request.get('files', [])
+            
+            logger.info(f"OrchestratorAgent routing request: {instructions[:100]}...")
+            
+            # Determine which agent to use
+            agent_type = self._determine_agent(instructions, files)
+            logger.info(f"Selected agent: {agent_type}")
+            
+            # Process request with selected agent
+            agent = self.agents[agent_type]
+            response = agent.process(request)
+            
+            # Add routing metadata
+            response['routed_to'] = agent_type
+            response['timestamp'] = datetime.utcnow().isoformat()
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"OrchestratorAgent error: {str(e)}")
+            return {
+                'error': 'Routing error',
+                'message': str(e),
+                'status': 'error'
+            }
+    
+    def _determine_agent(self, instructions: str, files: List[str]) -> str:
+        """Determine which agent should handle the request"""
+        lower_instructions = instructions.lower()
+        
+        # Check for presentation-related keywords
+        presentation_keywords = ['slide', 'powerpoint', 'ppt', 'presentation', 'deck']
+        if any(keyword in lower_instructions for keyword in presentation_keywords):
+            return 'presentation'
+        
+        # Check if this is a document analysis request
+        document_keywords = ['analyze', 'extract', 'summarize', 'review']
+        if files and any(keyword in lower_instructions for keyword in document_keywords):
+            return 'document'
+        
+        # Default to chat agent
+        return 'chat'
+
+# Global orchestrator instance
+orchestrator = OrchestratorAgent()
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    PowerPoint presentation orchestrator - CORS-safe wrapper.
+    Multi-Agent orchestrator Lambda handler.
     """
     try:
         logger.info(f"Received event: {json.dumps(event)}")
@@ -711,81 +1023,26 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             body_str = '{}'
         body = json.loads(body_str)
         
-        instructions = body.get('instructions', 'Generate a financial presentation')
-        template_key = body.get('template_key', 'PUBLIC IP South Plains (1).pptx')
-        document_key = body.get('document_key', 'documents/sample.pdf')
+        # Extract request parameters
+        request = {
+            'instructions': body.get('instructions', ''),
+            'template_key': body.get('template_key', 'PUBLIC IP South Plains (1).pptx'),
+            'document_key': body.get('document_key', ''),
+            'files': body.get('files', []),
+            'mode': body.get('mode', 'modify'),
+            'analyze_structure': body.get('analyze_structure', False)
+        }
         
-        # Always use modify mode for the South Plains presentation
-        mode = 'modify'
+        # Route request through orchestrator
+        response = orchestrator.route_request(request)
         
-        # Parse instructions to extract modifications
-        modifications = parse_instructions_to_modifications(instructions)
-        
-        # Generate unique presentation ID
-        presentation_id = str(uuid.uuid4())
-        timestamp = datetime.utcnow().isoformat()
-        
-        logger.info(f"Starting presentation {mode}: {presentation_id}")
-        
-        if mode == 'modify' and template_key:
-            # Modify existing presentation
-            try:
-                # Download existing PPTX from S3 documents bucket
-                template_response = s3.get_object(Bucket='scribbe-ai-dev-documents', Key=template_key)
-                existing_pptx_content = template_response['Body'].read()
-                
-                logger.info(f"Downloaded existing PPTX from S3: {template_key}")
-                
-                # Parse the structure first if requested
-                if body.get('analyze_structure', False):
-                    structure = parse_pptx_structure(existing_pptx_content)
-                    logger.info(f"PPTX structure: {structure}")
-                
-                # Apply modifications
-                modified_pptx_content = modify_existing_powerpoint(existing_pptx_content, modifications)
-                
-                logger.info("Applied modifications to existing PPTX")
-                
-                # Save modified PowerPoint file to S3 (complete presentation)
-                output_key = f"{presentation_id}/PUBLIC_IP_South_Plains_modified.pptx"
-                
-                s3.put_object(
-                    Bucket=OUTPUT_BUCKET,
-                    Key=output_key,
-                    Body=modified_pptx_content,
-                    ContentType='application/vnd.openxmlformats-officedocument.presentationml.presentation'
-                )
-                
-                logger.info(f"Modified PowerPoint file saved to S3: s3://{OUTPUT_BUCKET}/{output_key}")
-                
-                # Generate presigned URL for download
-                download_url = s3.generate_presigned_url(
-                    'get_object',
-                    Params={'Bucket': OUTPUT_BUCKET, 'Key': output_key},
-                    ExpiresIn=3600  # 1 hour
-                )
-                
-                return cors_response(200, {
-                    'presentation_id': presentation_id,
-                    'output_url': f"s3://{OUTPUT_BUCKET}/{output_key}",
-                    'message': 'Presentation modified successfully!',
-                    'presentation_name': output_key.split('/')[-1],
-                    'download_url': download_url,
-                    'status': 'success',
-                    'mode': 'modify'
-                })
-                
-            except Exception as modify_error:
-                logger.error(f"Error modifying existing PPTX: {str(modify_error)}")
-                return cors_response(500, {
-                    'error': 'Failed to modify presentation',
-                    'message': str(modify_error),
-                    'presentation_id': presentation_id
-                })
+        # Return CORS-safe response
+        return cors_response(200, response)
         
     except Exception as e:
-        logger.error(f"Error in presentation orchestrator: {str(e)}", exc_info=True)
+        logger.error(f"Error in Lambda handler: {str(e)}", exc_info=True)
         return cors_response(500, {
             'error': 'Internal server error',
-            'message': str(e)
+            'message': str(e),
+            'status': 'error'
         })

@@ -28,13 +28,14 @@ export async function callLambdaFunction(functionPath: string, data: any, method
   }
 }
 
-export async function generatePresentation(prompt: string) {
-  // Always use modify mode with the South Plains presentation
+export async function generatePresentation(prompt: string, files: any[] = []) {
+  // Multi-agent API call
   return callLambdaFunction('/presentations', {
     instructions: prompt,
     mode: 'modify',
     template_key: 'PUBLIC IP South Plains (1).pptx',
     document_key: 'documents/sample.pdf',
+    files: files.map(f => f.key),
     analyze_structure: false
   });
 }
