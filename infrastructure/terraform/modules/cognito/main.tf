@@ -235,7 +235,8 @@ resource "aws_iam_role_policy" "authenticated_s3" {
           "s3:DeleteObject"
         ]
         Resource = [
-          "arn:aws:s3:::${var.project_name}-${var.environment}-storage/*"
+          "arn:aws:s3:::${var.project_name}-${var.environment}-storage/*",
+          "arn:aws:s3:::${var.project_name}-${var.environment}-documents/*"
         ]
       },
       {
@@ -244,7 +245,8 @@ resource "aws_iam_role_policy" "authenticated_s3" {
           "s3:ListBucket"
         ]
         Resource = [
-          "arn:aws:s3:::${var.project_name}-${var.environment}-storage"
+          "arn:aws:s3:::${var.project_name}-${var.environment}-storage",
+          "arn:aws:s3:::${var.project_name}-${var.environment}-documents"
         ]
         Condition = {
           StringLike = {

@@ -82,6 +82,17 @@ class SimpleOrchestrator:
         query_lower = query.lower()
         return any(indicator in query_lower for indicator in presentation_indicators)
     
+    def _is_document_query(self, query: str) -> bool:
+        """Determine if query is asking about documents"""
+        document_indicators = [
+            'document', 'file', 'uploaded', 'attachment', 'dokument',
+            'what did i upload', 'analyze the file', 'tell me about',
+            'summarize', 'explain the document'
+        ]
+        
+        query_lower = query.lower()
+        return any(indicator in query_lower for indicator in document_indicators)
+    
     def _search_web(self, query: str) -> str:
         """Search the web using Tavily API"""
         if not self.tavily:
@@ -141,6 +152,82 @@ class SimpleOrchestrator:
         except Exception as e:
             logger.error(f"Presentation creation error: {str(e)}")
             return f"❌ **Error creating presentation:** {str(e)}"
+    
+    def _search_knowledge_base(self, query: str) -> str:
+        """Search through uploaded documents in knowledge base"""
+        try:
+            logger.info(f"Searching knowledge base for: {query}")
+            
+            # List documents in knowledge base
+            response = s3.list_objects_v2(
+                Bucket=DOCUMENTS_BUCKET,
+                Prefix='knowledge-base/',
+                MaxKeys=20
+            )
+            
+            if 'Contents' not in response:
+                return "📚 No documents found in knowledge base."
+            
+            # Search through documents for relevant content
+            relevant_content = []
+            for obj in response['Contents']:
+                if obj['Size'] > 5000000:  # Skip files larger than 5MB
+                    continue
+                    
+                try:
+                    # Download and read document
+                    doc_response = s3.get_object(Bucket=DOCUMENTS_BUCKET, Key=obj['Key'])
+                    content = doc_response['Body'].read().decode('utf-8', errors='ignore')
+                    
+                    # Simple relevance check
+                    if any(word.lower() in content.lower() for word in query.split()):
+                        doc_name = obj['Key'].split('/')[-1]
+                        # Extract relevant snippet
+                        snippet = self._extract_relevant_snippet(content, query, max_length=500)
+                        if snippet:
+                            relevant_content.append(f"**📄 From {doc_name}:**\n{snippet}")
+                        
+                        if len(relevant_content) >= 3:  # Limit to 3 most relevant snippets
+                            break
+                            
+                except Exception as e:
+                    logger.error(f"Error processing document {obj['Key']}: {str(e)}")
+                    continue
+            
+            if relevant_content:
+                return "📚 **Knowledge Base Search Results:**\n\n" + "\n\n".join(relevant_content)
+            else:
+                return f"📚 No relevant information found in knowledge base for: {query}"
+            
+        except Exception as e:
+            logger.error(f"Error searching knowledge base: {str(e)}")
+            return f"❌ Error searching knowledge base: {str(e)}"
+    
+    def _extract_relevant_snippet(self, content: str, query: str, max_length: int = 500) -> str:
+        """Extract the most relevant snippet from content based on query"""
+        query_words = query.lower().split()
+        content_lower = content.lower()
+        
+        best_position = -1
+        for word in query_words:
+            position = content_lower.find(word)
+            if position != -1 and (best_position == -1 or position < best_position):
+                best_position = position
+        
+        if best_position == -1:
+            return content[:max_length] + "..." if len(content) > max_length else content
+        
+        # Extract snippet around the found position
+        start = max(0, best_position - 100)
+        end = min(len(content), best_position + max_length)
+        
+        snippet = content[start:end]
+        if start > 0:
+            snippet = "..." + snippet
+        if end < len(content):
+            snippet = snippet + "..."
+            
+        return snippet
     
     def _call_bedrock(self, prompt: str, context: str = "") -> str:
         """Call Bedrock Claude model"""
@@ -211,6 +298,23 @@ class SimpleOrchestrator:
                 logger.info("Routing to presentation creation")
                 response_message = self._create_presentation(user_input)
                 tools_used.append("Presentation_Creator")
+            
+            # Check for document/knowledge base query
+            elif self._is_document_query(user_input) or files:
+                logger.info("Routing to knowledge base search")
+                kb_results = self._search_knowledge_base(user_input)
+                tools_used.append("Knowledge_Base_Search")
+                
+                # Use Bedrock to analyze and respond based on documents
+                bedrock_prompt = f"""User query: {user_input}
+
+Knowledge base search results:
+{kb_results}
+
+Please provide a comprehensive answer based on the document content above. 
+If no relevant documents were found, let the user know and offer to help with other questions."""
+                
+                response_message = self._call_bedrock(bedrock_prompt)
             
             # Check for web search request
             elif self._is_web_search_query(user_input):

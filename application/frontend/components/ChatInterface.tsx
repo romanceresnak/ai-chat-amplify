@@ -8,6 +8,44 @@ import { useDropzone } from 'react-dropzone';
 import { Send, Upload, X, FileText, Loader2 } from 'lucide-react';
 import { isPresentationRequest, generatePresentation } from '@/lib/api-client';
 
+// Helper function to upload to knowledge base (documents bucket)
+async function uploadToKnowledgeBase(file: File, key: string) {
+  // Get auth session for credentials
+  const session = await fetchAuthSession();
+  const credentials = session.credentials;
+  
+  if (!credentials) {
+    throw new Error('No authentication credentials available');
+  }
+
+  // Use AWS SDK directly for documents bucket
+  const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+  
+  const s3Client = new S3Client({
+    region: 'eu-west-1',
+    credentials: {
+      accessKeyId: credentials.accessKeyId,
+      secretAccessKey: credentials.secretAccessKey,
+      sessionToken: credentials.sessionToken,
+    },
+  });
+
+  const command = new PutObjectCommand({
+    Bucket: 'scribbe-ai-dev-documents',
+    Key: key,
+    Body: file,
+    ContentType: file.type,
+    Metadata: {
+      'original-name': file.name,
+      'uploaded-at': new Date().toISOString(),
+      'source': 'chat-interface',
+      'auto-indexed': 'true'
+    }
+  });
+
+  await s3Client.send(command);
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -20,6 +58,7 @@ interface UploadedFile {
   name: string;
   key: string;
   size: number;
+  kbSynced?: boolean; // Knowledge base sync status
 }
 
 export default function ChatInterface() {
@@ -60,19 +99,36 @@ export default function ChatInterface() {
 
     for (const file of acceptedFiles) {
       try {
-        const key = `chat-files/${Date.now()}-${file.name}`;
-        const result = await uploadData({
-          key,
+        // Upload to both chat-files and knowledge-base
+        const timestamp = Date.now();
+        const chatKey = `chat-files/${timestamp}-${file.name}`;
+        const kbKey = `knowledge-base/${timestamp}-${file.name}`;
+        
+        // Upload to chat storage for immediate use
+        const chatResult = await uploadData({
+          key: chatKey,
           data: file,
           options: {
             contentType: file.type,
           }
         }).result;
 
+        // Try to upload to knowledge base for future queries
+        let kbSynced = false;
+        try {
+          // Use direct S3 upload for documents bucket
+          await uploadToKnowledgeBase(file, kbKey);
+          console.log(`📚 Added to knowledge base: ${file.name}`);
+          kbSynced = true;
+        } catch (kbError) {
+          console.warn('Failed to add to knowledge base:', kbError);
+        }
+
         newFiles.push({
           name: file.name,
-          key: result.key,
+          key: chatResult.key,
           size: file.size,
+          kbSynced: kbSynced,
         });
       } catch (error) {
         console.error('Error uploading file:', error);
@@ -238,7 +294,14 @@ export default function ChatInterface() {
                 <div key={index} className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2">
                     <FileText className="w-4 h-4 text-gray-500" />
-                    {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                    <span className="flex items-center gap-1">
+                      {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                      {file.kbSynced ? (
+                        <span className="text-green-600 text-xs" title="Added to Knowledge Base">📚</span>
+                      ) : (
+                        <span className="text-gray-400 text-xs" title="Not in Knowledge Base">📄</span>
+                      )}
+                    </span>
                   </span>
                   <button
                     onClick={() => removeFile(index)}
