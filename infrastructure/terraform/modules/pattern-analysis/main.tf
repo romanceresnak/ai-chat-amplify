@@ -27,9 +27,10 @@ resource "aws_dynamodb_table" "patterns" {
 
   # GSI for querying by pattern type
   global_secondary_index {
-    name     = "PatternTypeIndex"
-    hash_key = "pattern_type"
-    range_key = "confidence_score"
+    name            = "PatternTypeIndex"
+    hash_key        = "pattern_type"
+    range_key       = "confidence_score"
+    projection_type = "ALL"
   }
 
   # Enable point-in-time recovery
@@ -73,16 +74,18 @@ resource "aws_dynamodb_table" "client_findings" {
 
   # GSI for querying by client
   global_secondary_index {
-    name     = "ClientIndex"
-    hash_key = "client_id"
-    range_key = "created_at"
+    name            = "ClientIndex"
+    hash_key        = "client_id"
+    range_key       = "created_at"
+    projection_type = "ALL"
   }
 
   # GSI for querying by category
   global_secondary_index {
-    name     = "CategoryIndex"
-    hash_key = "category"
-    range_key = "created_at"
+    name            = "CategoryIndex"
+    hash_key        = "category"
+    range_key       = "created_at"
+    projection_type = "ALL"
   }
 
   # Enable point-in-time recovery

@@ -27,16 +27,18 @@ resource "aws_dynamodb_table" "audit_log" {
 
   # Global Secondary Index for querying by user
   global_secondary_index {
-    name     = "UserIdIndex"
-    hash_key = "user_id"
-    range_key = "timestamp"
+    name            = "UserIdIndex"
+    hash_key        = "user_id"
+    range_key       = "timestamp"
+    projection_type = "ALL"
   }
 
   # Global Secondary Index for querying by action type
   global_secondary_index {
-    name     = "ActionIndex"
-    hash_key = "action"
-    range_key = "timestamp"
+    name            = "ActionIndex"
+    hash_key        = "action"
+    range_key       = "timestamp"
+    projection_type = "ALL"
   }
 
   # Enable point-in-time recovery
@@ -80,9 +82,10 @@ resource "aws_dynamodb_table" "file_approvals" {
 
   # GSI for querying by status
   global_secondary_index {
-    name     = "StatusIndex"
-    hash_key = "status"
-    range_key = "uploaded_at"
+    name            = "StatusIndex"
+    hash_key        = "status"
+    range_key       = "uploaded_at"
+    projection_type = "ALL"
   }
 
   # Enable point-in-time recovery
