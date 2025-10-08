@@ -7,6 +7,7 @@ import { uploadData } from 'aws-amplify/storage';
 import { useDropzone } from 'react-dropzone';
 import { Send, Upload, X, FileText, Loader2 } from 'lucide-react';
 import { isPresentationRequest, generatePresentation } from '@/lib/api-client';
+import { getCurrentUser } from 'aws-amplify/auth';
 
 interface Message {
   id: string;
@@ -59,12 +60,22 @@ export default function ChatInterface() {
     setIsUploading(true);
     const newFiles: UploadedFile[] = [];
 
+    // Get current user for audit logging
+    let userId = 'anonymous';
+    try {
+      const user = await getCurrentUser();
+      userId = user.userId || user.username || 'anonymous';
+    } catch (error) {
+      console.warn('Could not get current user for audit logging:', error);
+    }
+
     for (const file of acceptedFiles) {
       try {
         // Upload to both chat-files and knowledge-base
         const timestamp = Date.now();
         const chatKey = `chat-files/${timestamp}-${file.name}`;
         const kbKey = `knowledge-base/${timestamp}-${file.name}`;
+        const fileId = `${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
         
         // Convert file to Blob to avoid stream reading issues with Amplify
         const fileBlob = new Blob([file], { type: file.type });
@@ -75,6 +86,11 @@ export default function ChatInterface() {
           data: fileBlob,
           options: {
             contentType: file.type,
+            metadata: {
+              uploadedBy: userId,
+              uploadedAt: new Date().toISOString(),
+              fileId: fileId
+            }
           }
         }).result;
 
@@ -87,6 +103,12 @@ export default function ChatInterface() {
             data: fileBlob,
             options: {
               contentType: file.type,
+              metadata: {
+                uploadedBy: userId,
+                uploadedAt: new Date().toISOString(),
+                fileId: fileId,
+                originalName: file.name
+              },
               bucket: {
                 bucketName: process.env.NEXT_PUBLIC_DOCUMENTS_BUCKET || 'scribbe-ai-dev-documents',
                 region: 'eu-west-1'
@@ -95,8 +117,42 @@ export default function ChatInterface() {
           }).result;
           console.log(`📚 Added to knowledge base: ${file.name}`, kbResult);
           kbSynced = true;
+
+          // Log audit trail for successful upload
+          await logAuditEvent({
+            eventType: 'file_upload',
+            userId: userId,
+            action: 'UPLOAD_FILE',
+            resource: kbKey,
+            details: {
+              fileId: fileId,
+              fileName: file.name,
+              fileSize: file.size,
+              fileType: file.type,
+              s3Key: kbKey,
+              kbSynced: true
+            }
+          });
+
         } catch (kbError) {
           console.error('❌ Failed to add to knowledge base:', kbError);
+          
+          // Log audit trail for failed upload
+          await logAuditEvent({
+            eventType: 'file_upload',
+            userId: userId,
+            action: 'UPLOAD_FILE_FAILED',
+            resource: kbKey,
+            details: {
+              fileId: fileId,
+              fileName: file.name,
+              fileSize: file.size,
+              fileType: file.type,
+              s3Key: kbKey,
+              error: kbError.message || 'Unknown error',
+              kbSynced: false
+            }
+          });
         }
 
         newFiles.push({
@@ -107,11 +163,50 @@ export default function ChatInterface() {
         });
       } catch (error) {
         console.error('Error uploading file:', error);
+        
+        // Log audit trail for upload error
+        await logAuditEvent({
+          eventType: 'file_upload',
+          userId: userId,
+          action: 'UPLOAD_FILE_ERROR',
+          resource: file.name,
+          details: {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            error: error.message || 'Upload failed'
+          }
+        });
       }
     }
 
     setUploadedFiles([...uploadedFiles, ...newFiles]);
     setIsUploading(false);
+  };
+
+  // Helper function to log audit events
+  const logAuditEvent = async (auditData: any) => {
+    try {
+      // In a real implementation, this would call your audit logging API
+      const response = await fetch('/api/audit-log', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...auditData,
+          timestamp: new Date().toISOString(),
+          ipAddress: window.location.hostname, // In production, get real IP
+          userAgent: navigator.userAgent
+        })
+      });
+      
+      if (!response.ok) {
+        console.warn('Failed to log audit event:', response.statusText);
+      }
+    } catch (error) {
+      console.warn('Error logging audit event:', error);
+    }
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

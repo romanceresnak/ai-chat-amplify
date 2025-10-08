@@ -105,6 +105,23 @@ module "cognito" {
   }
 }
 
+# Audit Logging System
+module "audit_logging" {
+  source = "./modules/audit-logging"
+  
+  environment  = var.environment
+  project_name = var.project_name
+}
+
+# Pattern Analysis System
+module "pattern_analysis" {
+  source = "./modules/pattern-analysis"
+  
+  environment       = var.environment
+  project_name      = var.project_name
+  knowledge_base_id = module.bedrock.knowledge_base_id
+}
+
 # Amplify Hosting for frontend application
 module "amplify_hosting" {
   source = "./modules/amplify-hosting"

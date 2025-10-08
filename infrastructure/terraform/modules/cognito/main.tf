@@ -67,7 +67,42 @@ resource "aws_cognito_user_pool" "main" {
     device_only_remembered_on_user_prompt = false
   }
 
+  # Add custom attributes for user roles
+  schema {
+    attribute_data_type = "String"
+    name                = "role"
+    required            = false
+    mutable             = true
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 50
+    }
+  }
+
   tags = var.tags
+}
+
+# Cognito User Groups for RBAC
+resource "aws_cognito_user_group" "readonly" {
+  name         = "ReadOnly"
+  user_pool_id = aws_cognito_user_pool.main.id
+  description  = "Read-only users who can view data"
+  precedence   = 10
+}
+
+resource "aws_cognito_user_group" "write_access" {
+  name         = "WriteAccess"
+  user_pool_id = aws_cognito_user_pool.main.id
+  description  = "Users who can upload and approve flagged records"
+  precedence   = 5
+}
+
+resource "aws_cognito_user_group" "admin" {
+  name         = "Admin"
+  user_pool_id = aws_cognito_user_pool.main.id
+  description  = "Administrative users with full access"
+  precedence   = 1
 }
 
 # Cognito User Pool Client
