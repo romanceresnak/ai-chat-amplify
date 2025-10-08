@@ -41,6 +41,9 @@ resource "aws_lambda_function" "orchestrator" {
       TEMPLATES_BUCKET     = var.s3_buckets.templates
       OUTPUT_BUCKET        = var.s3_buckets.output
       PROMPTS_BUCKET       = var.s3_buckets.prompts
+      USE_LANGCHAIN        = "false"  # Can be toggled to "true" to use LangChain orchestrator
+      TAVILY_API_KEY       = ""       # Add your Tavily API key here or use AWS Secrets Manager
+      SERPAPI_API_KEY      = ""       # Add your SerpAPI key here or use AWS Secrets Manager
     }
   }
 

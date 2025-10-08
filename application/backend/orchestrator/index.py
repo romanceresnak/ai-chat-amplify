@@ -1198,6 +1198,7 @@ orchestrator = OrchestratorAgent()
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Multi-Agent orchestrator Lambda handler.
+    Supports both original and LangChain orchestrators.
     """
     try:
         logger.info(f"Received event: {json.dumps(event)}")
@@ -1215,7 +1216,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             body_str = '{}'
         body = json.loads(body_str)
         
-        # Extract request parameters
+        # Check if we should use LangChain orchestrator
+        use_langchain = body.get('use_langchain', False) or os.environ.get('USE_LANGCHAIN', 'false').lower() == 'true'
+        
+        if use_langchain:
+            try:
+                # Import and use LangChain orchestrator
+                from .langchain_orchestrator import lambda_handler as langchain_handler
+                return langchain_handler(event, context)
+            except ImportError as e:
+                logger.warning(f"LangChain not available, falling back to original orchestrator: {str(e)}")
+        
+        # Extract request parameters for original orchestrator
         request = {
             'instructions': body.get('instructions', ''),
             'template_key': body.get('template_key', 'PUBLIC IP South Plains (1).pptx'),
@@ -1225,7 +1237,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'analyze_structure': body.get('analyze_structure', False)
         }
         
-        # Route request through orchestrator
+        # Route request through original orchestrator
         response = orchestrator.route_request(request)
         
         # Return CORS-safe response

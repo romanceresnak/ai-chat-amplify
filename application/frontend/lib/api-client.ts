@@ -29,14 +29,18 @@ export async function callLambdaFunction(functionPath: string, data: any, method
 }
 
 export async function generatePresentation(prompt: string, files: any[] = []) {
-  // Multi-agent API call
+  // Multi-agent API call with optional LangChain support
+  const useLangChain = localStorage.getItem('use_langchain') === 'true' || 
+                       process.env.NEXT_PUBLIC_USE_LANGCHAIN === 'true';
+  
   return callLambdaFunction('/presentations', {
     instructions: prompt,
     mode: 'modify',
     template_key: 'PUBLIC IP South Plains (1).pptx',
     document_key: 'documents/sample.pdf',
     files: files.map(f => f.key),
-    analyze_structure: false
+    analyze_structure: false,
+    use_langchain: useLangChain
   });
 }
 
