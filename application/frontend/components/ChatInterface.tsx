@@ -102,7 +102,7 @@ export default function ChatInterface() {
         // Upload to both chat-files and knowledge-base
         const timestamp = Date.now();
         const chatKey = `chat-files/${timestamp}-${file.name}`;
-        const kbKey = `knowledge-base/${timestamp}-${file.name}`;
+        const kbKey = `public/knowledge-base/${timestamp}-${file.name}`;
         
         // Upload to chat storage for immediate use
         const chatResult = await uploadData({

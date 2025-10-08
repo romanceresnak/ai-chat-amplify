@@ -161,7 +161,7 @@ class SimpleOrchestrator:
             # List documents in knowledge base
             response = s3.list_objects_v2(
                 Bucket=DOCUMENTS_BUCKET,
-                Prefix='knowledge-base/',
+                Prefix='public/knowledge-base/',
                 MaxKeys=20
             )
             
