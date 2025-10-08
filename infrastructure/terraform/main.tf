@@ -127,3 +127,16 @@ module "amplify_hosting" {
     Project     = var.project_name
   }
 }
+
+# S3 bucket notification for automatic knowledge base sync
+resource "aws_s3_bucket_notification" "documents_notification" {
+  bucket = module.s3.documents_bucket_name
+
+  lambda_function {
+    lambda_function_arn = module.bedrock.kb_sync_lambda_arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "knowledge-base/"
+  }
+
+  depends_on = [module.bedrock.kb_sync_lambda_permission]
+}

@@ -73,7 +73,8 @@ def create_index():
                         "type": "text"
                     },
                     "metadata": {
-                        "type": "object"
+                        "type": "object",
+                        "enabled": false
                     }
                 }
             }

@@ -21,6 +21,22 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "documents" {
   }
 }
 
+resource "aws_s3_bucket_cors_configuration" "documents" {
+  bucket = aws_s3_bucket.documents.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "POST", "DELETE", "HEAD"]
+    allowed_origins = [
+      "https://main.d2ooc00qx2fxfv.amplifyapp.com",
+      "http://localhost:3000",
+      "https://localhost:3000"
+    ]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
 # Templates bucket
 resource "aws_s3_bucket" "templates" {
   bucket = "${var.project_name}-${var.environment}-templates"
@@ -89,4 +105,5 @@ resource "aws_s3_bucket_policy" "documents" {
     ]
   })
 }
+
 

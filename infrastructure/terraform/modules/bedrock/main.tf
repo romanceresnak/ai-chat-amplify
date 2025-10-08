@@ -109,7 +109,7 @@ resource "null_resource" "create_opensearch_index" {
 
 # Bedrock Knowledge Base
 resource "aws_bedrockagent_knowledge_base" "main" {
-  name        = "${var.project_name}-${var.environment}-kb-v2"
+  name        = "${var.project_name}-${var.environment}-kb-fixed"
   description = "Knowledge base for ScribbeAI presentations"
   role_arn    = var.knowledge_base_role
 
@@ -124,7 +124,7 @@ resource "aws_bedrockagent_knowledge_base" "main" {
     type = "OPENSEARCH_SERVERLESS"
     opensearch_serverless_configuration {
       collection_arn    = aws_opensearchserverless_collection.knowledge_base.arn
-      vector_index_name = "scribbe-vectors"
+      vector_index_name = "scribbe-vectors-v2"
       
       field_mapping {
         vector_field   = "embedding"
@@ -142,7 +142,7 @@ resource "aws_bedrockagent_knowledge_base" "main" {
 
 # Data Source for Knowledge Base
 resource "aws_bedrockagent_data_source" "s3_documents" {
-  name              = "${var.project_name}-documents"
+  name              = "${var.project_name}-documents-v2"
   knowledge_base_id = aws_bedrockagent_knowledge_base.main.id
   
   data_source_configuration {
@@ -150,6 +150,10 @@ resource "aws_bedrockagent_data_source" "s3_documents" {
     s3_configuration {
       bucket_arn = var.s3_data_source_bucket
     }
+  }
+  
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
@@ -188,6 +192,91 @@ resource "aws_bedrockagent_agent" "presentation_agent" {
 #   knowledge_base_id    = aws_bedrockagent_knowledge_base.main.id
 #   knowledge_base_state = "ENABLED"
 # }
+
+# Lambda function for automatic knowledge base sync
+resource "aws_lambda_function" "kb_sync" {
+  filename         = "${path.module}/sync_lambda.zip"
+  function_name    = "${var.project_name}-${var.environment}-kb-sync"
+  role            = aws_iam_role.lambda_kb_sync.arn
+  handler         = "sync_lambda.lambda_handler"
+  runtime         = "python3.9"
+  timeout         = 60
+
+  environment {
+    variables = {
+      KNOWLEDGE_BASE_ID = aws_bedrockagent_knowledge_base.main.id
+      DATA_SOURCE_ID    = aws_bedrockagent_data_source.s3_documents.data_source_id
+    }
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_kb_sync_policy,
+    data.archive_file.lambda_kb_sync_zip
+  ]
+}
+
+# Create zip file for Lambda
+data "archive_file" "lambda_kb_sync_zip" {
+  type        = "zip"
+  source_file = "${path.module}/sync_lambda.py"
+  output_path = "${path.module}/sync_lambda.zip"
+}
+
+# IAM role for Lambda
+resource "aws_iam_role" "lambda_kb_sync" {
+  name = "${var.project_name}-${var.environment}-lambda-kb-sync"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# IAM policy for Lambda to access Bedrock and CloudWatch
+resource "aws_iam_role_policy" "lambda_kb_sync" {
+  name = "${var.project_name}-${var.environment}-lambda-kb-sync-policy"
+  role = aws_iam_role.lambda_kb_sync.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "bedrock:*",
+          "bedrock-agent:*",
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Attach basic Lambda execution policy
+resource "aws_iam_role_policy_attachment" "lambda_kb_sync_policy" {
+  role       = aws_iam_role.lambda_kb_sync.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# Lambda permission for S3 to invoke
+resource "aws_lambda_permission" "s3_invoke" {
+  statement_id  = "AllowExecutionFromS3Bucket"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.kb_sync.function_name
+  principal     = "s3.amazonaws.com"
+  source_arn    = var.s3_data_source_bucket
+}
 
 # Agent Alias
 resource "aws_bedrockagent_agent_alias" "presentation_agent_alias" {
