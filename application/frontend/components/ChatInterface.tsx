@@ -119,6 +119,9 @@ export default function ChatInterface() {
     accept: {
       'image/*': [],
       'application/pdf': [],
+      'text/plain': [],
+      'text/csv': [],
+      'application/json': [],
       'text/*': [],
       'application/msword': [],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [],
