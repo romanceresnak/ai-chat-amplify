@@ -24,6 +24,7 @@ bedrock = boto3.client('bedrock-runtime', region_name='eu-west-1')
 # Environment variables
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
 OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', 'scribbe-ai-dev-output')
+DOCUMENTS_BUCKET = os.environ.get('DOCUMENTS_BUCKET', 'scribbe-ai-dev-documents')
 TEMPLATE_PROCESSOR_ARN = os.environ.get('TEMPLATE_PROCESSOR_ARN', f'arn:aws:lambda:eu-west-1:873478944520:function:scribbe-ai-{ENVIRONMENT}-template-processor')
 BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'eu.anthropic.claude-3-5-sonnet-20240620-v1:0')
 
@@ -862,21 +863,114 @@ class ChatAgent(Agent):
             }
     
     def _prepare_prompt(self, message: str, files: List[str]) -> str:
-        """Prepare prompt with context from files if provided"""
-        prompt = message
+        """Prepare prompt with context from files and knowledge base"""
+        # Start with the user's message
+        prompt_parts = [message]
         
+        # Check if we need to search knowledge base documents
+        if self._should_search_knowledge_base(message):
+            kb_context = self._search_knowledge_base(message)
+            if kb_context:
+                prompt_parts.append("\n\n**Relevant information from knowledge base:**")
+                prompt_parts.append(kb_context)
+        
+        # Add context from uploaded files if provided
         if files:
-            prompt += "\n\nContext from uploaded files:\n"
+            prompt_parts.append("\n\n**Context from uploaded files:**")
             for file_key in files[:3]:  # Limit to first 3 files
                 try:
                     # Download file content from S3
                     file_obj = s3.get_object(Bucket='scribbe-ai-dev-storage', Key=file_key)
                     content = file_obj['Body'].read().decode('utf-8', errors='ignore')
-                    prompt += f"\n--- File: {file_key} ---\n{content[:1000]}...\n"
+                    filename = file_key.split('/')[-1]
+                    prompt_parts.append(f"\n--- {filename} ---\n{content[:2000]}...")
                 except Exception as e:
                     logger.error(f"Error reading file {file_key}: {str(e)}")
         
-        return prompt
+        return "\n".join(prompt_parts)
+    
+    def _should_search_knowledge_base(self, message: str) -> bool:
+        """Determine if we should search the knowledge base"""
+        # Keywords that suggest knowledge base search
+        search_indicators = [
+            'what is', 'who is', 'tell me about', 'explain', 'describe',
+            'how does', 'how do', 'when was', 'where is', 'why is',
+            'define', 'information about', 'details on', 'facts about'
+        ]
+        message_lower = message.lower()
+        return any(indicator in message_lower for indicator in search_indicators)
+    
+    def _search_knowledge_base(self, query: str) -> Optional[str]:
+        """Search documents in S3 knowledge base"""
+        try:
+            # List documents in the documents bucket
+            response = s3.list_objects_v2(
+                Bucket=DOCUMENTS_BUCKET,
+                MaxKeys=10  # Limit to recent documents
+            )
+            
+            if 'Contents' not in response:
+                return None
+            
+            relevant_content = []
+            
+            # Search through documents for relevant content
+            for obj in response['Contents']:
+                if obj['Size'] > 5000000:  # Skip files larger than 5MB
+                    continue
+                    
+                try:
+                    # Download and read document
+                    doc_response = s3.get_object(Bucket=DOCUMENTS_BUCKET, Key=obj['Key'])
+                    content = doc_response['Body'].read().decode('utf-8', errors='ignore')
+                    
+                    # Simple relevance check (could be enhanced with embeddings)
+                    if any(word in content.lower() for word in query.lower().split()):
+                        doc_name = obj['Key'].split('/')[-1]
+                        # Extract relevant snippet
+                        snippet = self._extract_relevant_snippet(content, query, max_length=500)
+                        if snippet:
+                            relevant_content.append(f"**From {doc_name}:**\n{snippet}")
+                        
+                        if len(relevant_content) >= 3:  # Limit to 3 most relevant snippets
+                            break
+                            
+                except Exception as e:
+                    logger.error(f"Error processing document {obj['Key']}: {str(e)}")
+                    continue
+            
+            return "\n\n".join(relevant_content) if relevant_content else None
+            
+        except Exception as e:
+            logger.error(f"Error searching knowledge base: {str(e)}")
+            return None
+    
+    def _extract_relevant_snippet(self, content: str, query: str, max_length: int = 500) -> Optional[str]:
+        """Extract the most relevant snippet from content based on query"""
+        # Simple implementation - find first occurrence of query words
+        query_words = query.lower().split()
+        content_lower = content.lower()
+        
+        best_position = -1
+        for word in query_words:
+            position = content_lower.find(word)
+            if position != -1 and (best_position == -1 or position < best_position):
+                best_position = position
+        
+        if best_position == -1:
+            return None
+        
+        # Extract snippet around the found position
+        start = max(0, best_position - 100)
+        end = min(len(content), best_position + max_length)
+        
+        snippet = content[start:end]
+        if start > 0:
+            snippet = "..." + snippet
+        if end < len(content):
+            snippet = snippet + "..."
+            
+        return snippet
 
 # Document Agent
 class DocumentAgent(Agent):
@@ -902,12 +996,21 @@ class DocumentAgent(Agent):
             
             Documents:"""
             
+            documents_content = []
             for file_key in files:
                 try:
                     # Download file content
                     file_obj = s3.get_object(Bucket='scribbe-ai-dev-storage', Key=file_key)
                     content = file_obj['Body'].read().decode('utf-8', errors='ignore')
-                    analysis_prompt += f"\n\n--- {file_key} ---\n{content[:2000]}"
+                    filename = file_key.split('/')[-1]
+                    analysis_prompt += f"\n\n--- {filename} ---\n{content[:2000]}"
+                    
+                    # Store full content for knowledge base
+                    documents_content.append({
+                        'filename': filename,
+                        'content': content,
+                        'key': file_key
+                    })
                 except Exception as e:
                     logger.error(f"Error reading file {file_key}: {str(e)}")
             
@@ -929,11 +1032,24 @@ class DocumentAgent(Agent):
             response_body = json.loads(response['body'].read())
             analysis_result = response_body['content'][0]['text']
             
+            # Save documents to knowledge base
+            saved_documents = []
+            if "save" in message.lower() or "knowledge base" in message.lower():
+                for doc in documents_content:
+                    saved_key = self._save_to_knowledge_base(doc)
+                    if saved_key:
+                        saved_documents.append(saved_key)
+            
+            result_message = analysis_result
+            if saved_documents:
+                result_message += f"\n\n✅ **Saved {len(saved_documents)} document(s) to knowledge base for future queries.**"
+            
             return {
-                'message': analysis_result,
+                'message': result_message,
                 'status': 'success',
                 'agent': 'document',
-                'files_analyzed': len(files)
+                'files_analyzed': len(files),
+                'saved_to_kb': saved_documents
             }
             
         except Exception as e:
@@ -943,6 +1059,33 @@ class DocumentAgent(Agent):
                 'message': str(e),
                 'agent': 'document'
             }
+    
+    def _save_to_knowledge_base(self, document: Dict[str, str]) -> Optional[str]:
+        """Save document to knowledge base in S3"""
+        try:
+            timestamp = datetime.utcnow().isoformat()
+            # Create a unique key in the documents bucket
+            kb_key = f"knowledge-base/{timestamp}_{document['filename']}"
+            
+            # Save to documents bucket
+            s3.put_object(
+                Bucket=DOCUMENTS_BUCKET,
+                Key=kb_key,
+                Body=document['content'].encode('utf-8'),
+                ContentType='text/plain',
+                Metadata={
+                    'source': 'document-agent',
+                    'original-filename': document['filename'],
+                    'indexed-at': timestamp
+                }
+            )
+            
+            logger.info(f"Saved document to knowledge base: {kb_key}")
+            return kb_key
+            
+        except Exception as e:
+            logger.error(f"Error saving to knowledge base: {str(e)}")
+            return None
 
 # Main Orchestrator Agent
 class OrchestratorAgent:
@@ -986,21 +1129,68 @@ class OrchestratorAgent:
             }
     
     def _determine_agent(self, instructions: str, files: List[str]) -> str:
-        """Determine which agent should handle the request"""
-        lower_instructions = instructions.lower()
-        
-        # Check for presentation-related keywords
-        presentation_keywords = ['slide', 'powerpoint', 'ppt', 'presentation', 'deck']
-        if any(keyword in lower_instructions for keyword in presentation_keywords):
-            return 'presentation'
-        
-        # Check if this is a document analysis request
-        document_keywords = ['analyze', 'extract', 'summarize', 'review']
-        if files and any(keyword in lower_instructions for keyword in document_keywords):
-            return 'document'
-        
-        # Default to chat agent
-        return 'chat'
+        """Use AI to intelligently determine which agent should handle the request"""
+        try:
+            # First try quick keyword matching for obvious cases
+            lower_instructions = instructions.lower()
+            
+            # Very obvious presentation keywords
+            if any(word in lower_instructions for word in ['slide', 'powerpoint', 'pptx', 'presentation']):
+                return 'presentation'
+            
+            # Use AI for intelligent routing
+            routing_prompt = f"""Analyze this user request and determine which specialized agent should handle it.
+
+User Request: "{instructions}"
+Has attached files: {"Yes" if files else "No"}
+
+Available agents and their capabilities:
+1. presentation - Handles creating/modifying PowerPoint presentations, slides, charts, and visual content
+2. document - Specializes in analyzing, extracting information from uploaded documents, PDFs, contracts, reports
+3. chat - Handles general questions, conversations, explanations, and knowledge-based queries
+
+Examples:
+- "Create a slide about Q2 results" → presentation
+- "What is the capital of France?" → chat
+- "Analyze this contract for key terms" → document (if file attached)
+- "Explain quantum computing" → chat
+- "Update slide 23 with new data" → presentation
+- "Summarize the attached PDF" → document
+
+Based on the user's request, which agent should handle this? Respond with ONLY one word: presentation, document, or chat."""
+
+            response = bedrock.invoke_model(
+                modelId=BEDROCK_MODEL_ID,
+                body=json.dumps({
+                    "messages": [{
+                        "role": "user",
+                        "content": routing_prompt
+                    }],
+                    "max_tokens": 10,
+                    "temperature": 0.1,
+                    "anthropic_version": "bedrock-2023-05-31"
+                }),
+                contentType='application/json'
+            )
+            
+            response_body = json.loads(response['body'].read())
+            agent_choice = response_body['content'][0]['text'].strip().lower()
+            
+            # Validate response
+            valid_agents = ['presentation', 'document', 'chat']
+            if agent_choice in valid_agents:
+                logger.info(f"AI Orchestrator selected: {agent_choice} for request: {instructions[:50]}...")
+                return agent_choice
+            else:
+                logger.warning(f"AI returned invalid agent: {agent_choice}, defaulting to chat")
+                return 'chat'
+                
+        except Exception as e:
+            logger.error(f"AI routing failed, falling back to keyword matching: {str(e)}")
+            # Fallback to simple keyword matching
+            if files and any(keyword in lower_instructions for keyword in ['analyze', 'extract', 'summarize', 'review']):
+                return 'document'
+            return 'chat'
 
 # Global orchestrator instance
 orchestrator = OrchestratorAgent()
