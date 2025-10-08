@@ -9,6 +9,14 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import uuid
 
+# Load environment variables from .env file
+try:
+    import env_loader
+    env_loader.load_env_file()
+except ImportError:
+    # Fallback if env_loader not available
+    pass
+
 # AWS imports
 import boto3
 
@@ -41,7 +49,7 @@ OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', 'scribbe-ai-dev-output')
 DOCUMENTS_BUCKET = os.environ.get('DOCUMENTS_BUCKET', 'scribbe-ai-dev-documents')
 BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'eu.anthropic.claude-3-5-sonnet-20240620-v1:0')
 
-# API Keys (should be in environment variables or Secrets Manager)
+# API Keys (loaded from .env file or environment variables)
 TAVILY_API_KEY = os.environ.get('TAVILY_API_KEY', '')
 SERPAPI_API_KEY = os.environ.get('SERPAPI_API_KEY', '')
 
@@ -264,10 +272,10 @@ Thought: Let me analyze this request and determine the best approach.
             instructions = request.get('instructions', '')
             
             # Import presentation module
-            from .presentation_agent import PresentationAgent
+            import presentation_agent
             
             # Create presentation agent
-            ppt_agent = PresentationAgent()
+            ppt_agent = presentation_agent.PresentationAgent()
             result = ppt_agent.process({
                 'instructions': instructions,
                 'mode': request.get('mode', 'modify'),

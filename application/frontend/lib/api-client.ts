@@ -28,10 +28,9 @@ export async function callLambdaFunction(functionPath: string, data: any, method
   }
 }
 
-export async function generatePresentation(prompt: string, files: any[] = []) {
-  // Multi-agent API call with optional LangChain support
-  const useLangChain = localStorage.getItem('use_langchain') === 'true' || 
-                       process.env.NEXT_PUBLIC_USE_LANGCHAIN === 'true';
+export async function generatePresentation(prompt: string, files: any[] = [], useLangChain: boolean = true) {
+  // Multi-agent API call with LangChain support
+  const shouldUseLangChain = useLangChain && process.env.NEXT_PUBLIC_USE_LANGCHAIN !== 'false';
   
   return callLambdaFunction('/presentations', {
     instructions: prompt,
@@ -40,7 +39,7 @@ export async function generatePresentation(prompt: string, files: any[] = []) {
     document_key: 'documents/sample.pdf',
     files: files.map(f => f.key),
     analyze_structure: false,
-    use_langchain: useLangChain
+    use_langchain: shouldUseLangChain
   });
 }
 

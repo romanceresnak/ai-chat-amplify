@@ -28,12 +28,25 @@ export default function ChatInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [useLangChain, setUseLangChain] = useState(true); // Default to true for web search
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  // Bedrock client removed - using mock responses only
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    // Load LangChain preference from localStorage
+    const savedPreference = localStorage.getItem('use_langchain');
+    if (savedPreference !== null) {
+      setUseLangChain(savedPreference === 'true');
+    }
+  }, []);
+
+  useEffect(() => {
+    // Save LangChain preference to localStorage
+    localStorage.setItem('use_langchain', useLangChain.toString());
+  }, [useLangChain]);
 
   // Bedrock client initialization removed
 
@@ -109,7 +122,7 @@ export default function ChatInterface() {
       console.log('API URL:', process.env.NEXT_PUBLIC_API_URL);
       
       // Always call the multi-agent API
-      const result = await generatePresentation(userMessage.content, uploadedFiles);
+      const result = await generatePresentation(userMessage.content, uploadedFiles, useLangChain);
       
       // Format the response based on which agent handled it
       let responseContent = result.message || '';
@@ -127,6 +140,16 @@ export default function ChatInterface() {
         }
       } else if (result.agent === 'chat') {
         responseContent = `💬 ${responseContent}`;
+      } else if (result.agent === 'simple-orchestrator') {
+        // LangChain orchestrator response - already formatted
+        if (result.tools_used && result.tools_used.length > 0) {
+          responseContent += `\n\n*Tools used: ${result.tools_used.join(', ')}*`;
+        }
+      } else if (result.agent === 'langchain-orchestrator') {
+        // Full LangChain orchestrator response
+        if (result.tools_used && result.tools_used.length > 0) {
+          responseContent += `\n\n*AI Tools: ${result.tools_used.join(', ')}*`;
+        }
       }
       
       // Add routing info in dev mode
@@ -228,6 +251,22 @@ export default function ChatInterface() {
             </div>
           </div>
         )}
+
+        {/* LangChain Toggle */}
+        <div className="mb-3 flex items-center gap-3 text-sm">
+          <span className="text-gray-600">AI Mode:</span>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useLangChain}
+              onChange={(e) => setUseLangChain(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className={useLangChain ? 'text-blue-600 font-medium' : 'text-gray-500'}>
+              {useLangChain ? '🌐 Advanced AI (Web Search)' : '💬 Basic Chat'}
+            </span>
+          </label>
+        </div>
 
         <div className="flex gap-2">
           <div

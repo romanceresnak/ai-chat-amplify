@@ -12,6 +12,14 @@ import re
 import base64
 from abc import ABC, abstractmethod
 
+# Load environment variables from .env file
+try:
+    import env_loader
+    env_loader.load_env_file()
+except ImportError:
+    # Fallback if env_loader not available
+    pass
+
 # Initialize logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -1221,11 +1229,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         if use_langchain:
             try:
-                # Import and use LangChain orchestrator
-                from .langchain_orchestrator import lambda_handler as langchain_handler
-                return langchain_handler(event, context)
+                # Import and use Simple LangChain orchestrator (with Tavily)
+                import simple_langchain_orchestrator
+                return simple_langchain_orchestrator.lambda_handler(event, context)
             except ImportError as e:
-                logger.warning(f"LangChain not available, falling back to original orchestrator: {str(e)}")
+                logger.warning(f"Simple LangChain orchestrator not available, falling back to original orchestrator: {str(e)}")
         
         # Extract request parameters for original orchestrator
         request = {

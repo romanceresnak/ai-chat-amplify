@@ -38,3 +38,24 @@ variable "vpc_config" {
   })
   default = null
 }
+
+# LangChain Configuration Variables
+variable "use_langchain" {
+  description = "Enable LangChain orchestrator"
+  type        = string
+  default     = "false"
+}
+
+variable "tavily_api_key" {
+  description = "Tavily API key for web search"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "serpapi_api_key" {
+  description = "SerpAPI key for web search"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

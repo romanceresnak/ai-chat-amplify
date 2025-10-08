@@ -1,1 +1,1 @@
-{"body": "{\"document_key\": \"test.pdf\", \"template_key\": \"default\", \"instructions\": \"Generate financial presentation\"}"}
+{"httpMethod": "POST", "body": "{\"instructions\": \"What are the latest AI news today?\", \"use_langchain\": true}"}

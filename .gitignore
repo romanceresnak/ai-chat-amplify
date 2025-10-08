@@ -45,3 +45,7 @@ node_modules/
 # AWS credentials
 .aws/
 credentials
+# Lambda layers
+layer_build/
+python-minimal/
+*.zip
