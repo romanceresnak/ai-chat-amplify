@@ -7,48 +7,6 @@ import { uploadData } from 'aws-amplify/storage';
 import { useDropzone } from 'react-dropzone';
 import { Send, Upload, X, FileText, Loader2 } from 'lucide-react';
 import { isPresentationRequest, generatePresentation } from '@/lib/api-client';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-
-// Helper function to upload to knowledge base (documents bucket)
-async function uploadToKnowledgeBase(file: File, key: string) {
-  console.log(`🔐 Getting auth session for KB upload...`);
-  // Get auth session for credentials
-  const session = await fetchAuthSession();
-  const credentials = session.credentials;
-  
-  if (!credentials) {
-    console.error('❌ No authentication credentials available');
-    throw new Error('No authentication credentials available');
-  }
-  
-  console.log(`✅ Got credentials, uploading to ${process.env.NEXT_PUBLIC_DOCUMENTS_BUCKET}/${key}`);
-
-  // Use AWS SDK directly for documents bucket
-  
-  const s3Client = new S3Client({
-    region: 'eu-west-1',
-    credentials: {
-      accessKeyId: credentials.accessKeyId,
-      secretAccessKey: credentials.secretAccessKey,
-      sessionToken: credentials.sessionToken,
-    },
-  });
-
-  const command = new PutObjectCommand({
-    Bucket: process.env.NEXT_PUBLIC_DOCUMENTS_BUCKET || 'scribbe-ai-dev-documents',
-    Key: key,
-    Body: file,
-    ContentType: file.type,
-    Metadata: {
-      'original-name': file.name,
-      'uploaded-at': new Date().toISOString(),
-      'source': 'chat-interface',
-      'auto-indexed': 'true'
-    }
-  });
-
-  await s3Client.send(command);
-}
 
 interface Message {
   id: string;
@@ -108,10 +66,13 @@ export default function ChatInterface() {
         const chatKey = `chat-files/${timestamp}-${file.name}`;
         const kbKey = `public/knowledge-base/${timestamp}-${file.name}`;
         
+        // Convert file to Blob to avoid stream reading issues with Amplify
+        const fileBlob = new Blob([file], { type: file.type });
+        
         // Upload to chat storage for immediate use
         const chatResult = await uploadData({
           key: chatKey,
-          data: file,
+          data: fileBlob,
           options: {
             contentType: file.type,
           }
@@ -121,9 +82,18 @@ export default function ChatInterface() {
         let kbSynced = false;
         try {
           console.log(`🔄 Attempting KB upload: ${kbKey} to bucket: ${process.env.NEXT_PUBLIC_DOCUMENTS_BUCKET}`);
-          // Use direct S3 upload for documents bucket
-          await uploadToKnowledgeBase(file, kbKey);
-          console.log(`📚 Added to knowledge base: ${file.name}`);
+          const kbResult = await uploadData({
+            key: kbKey,
+            data: fileBlob,
+            options: {
+              contentType: file.type,
+              bucket: {
+                bucketName: process.env.NEXT_PUBLIC_DOCUMENTS_BUCKET || 'scribbe-ai-dev-documents',
+                region: 'eu-west-1'
+              }
+            }
+          }).result;
+          console.log(`📚 Added to knowledge base: ${file.name}`, kbResult);
           kbSynced = true;
         } catch (kbError) {
           console.error('❌ Failed to add to knowledge base:', kbError);
