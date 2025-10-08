@@ -64,7 +64,7 @@ export default function ChatInterface() {
         // Upload to both chat-files and knowledge-base
         const timestamp = Date.now();
         const chatKey = `chat-files/${timestamp}-${file.name}`;
-        const kbKey = `public/knowledge-base/${timestamp}-${file.name}`;
+        const kbKey = `knowledge-base/${timestamp}-${file.name}`;
         
         // Convert file to Blob to avoid stream reading issues with Amplify
         const fileBlob = new Blob([file], { type: file.type });
