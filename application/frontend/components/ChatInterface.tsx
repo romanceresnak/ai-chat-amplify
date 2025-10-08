@@ -7,19 +7,23 @@ import { uploadData } from 'aws-amplify/storage';
 import { useDropzone } from 'react-dropzone';
 import { Send, Upload, X, FileText, Loader2 } from 'lucide-react';
 import { isPresentationRequest, generatePresentation } from '@/lib/api-client';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 // Helper function to upload to knowledge base (documents bucket)
 async function uploadToKnowledgeBase(file: File, key: string) {
+  console.log(`🔐 Getting auth session for KB upload...`);
   // Get auth session for credentials
   const session = await fetchAuthSession();
   const credentials = session.credentials;
   
   if (!credentials) {
+    console.error('❌ No authentication credentials available');
     throw new Error('No authentication credentials available');
   }
+  
+  console.log(`✅ Got credentials, uploading to ${process.env.NEXT_PUBLIC_DOCUMENTS_BUCKET}/${key}`);
 
   // Use AWS SDK directly for documents bucket
-  const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
   
   const s3Client = new S3Client({
     region: 'eu-west-1',
@@ -31,7 +35,7 @@ async function uploadToKnowledgeBase(file: File, key: string) {
   });
 
   const command = new PutObjectCommand({
-    Bucket: 'scribbe-ai-dev-documents',
+    Bucket: process.env.NEXT_PUBLIC_DOCUMENTS_BUCKET || 'scribbe-ai-dev-documents',
     Key: key,
     Body: file,
     ContentType: file.type,
@@ -116,12 +120,13 @@ export default function ChatInterface() {
         // Try to upload to knowledge base for future queries
         let kbSynced = false;
         try {
+          console.log(`🔄 Attempting KB upload: ${kbKey} to bucket: ${process.env.NEXT_PUBLIC_DOCUMENTS_BUCKET}`);
           // Use direct S3 upload for documents bucket
           await uploadToKnowledgeBase(file, kbKey);
           console.log(`📚 Added to knowledge base: ${file.name}`);
           kbSynced = true;
         } catch (kbError) {
-          console.warn('Failed to add to knowledge base:', kbError);
+          console.error('❌ Failed to add to knowledge base:', kbError);
         }
 
         newFiles.push({
