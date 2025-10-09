@@ -12,11 +12,10 @@ interface UseUserRoleReturn {
   isAdmin: boolean;
 }
 
-const roleHierarchy: Record<UserRole, number> = {
+const roleHierarchy: Record<NonNullable<UserRole>, number> = {
   Admin: 3,
   WriteAccess: 2,
-  ReadOnly: 1,
-  null: 0
+  ReadOnly: 1
 };
 
 export const useUserRole = (): UseUserRoleReturn => {
@@ -46,7 +45,9 @@ export const useUserRole = (): UseUserRoleReturn => {
 
   const hasPermission = (requiredRole: UserRole): boolean => {
     if (!role || !requiredRole) return false;
-    return roleHierarchy[role] >= roleHierarchy[requiredRole];
+    const userLevel = roleHierarchy[role as NonNullable<UserRole>] || 0;
+    const requiredLevel = roleHierarchy[requiredRole as NonNullable<UserRole>] || 0;
+    return userLevel >= requiredLevel;
   };
 
   return {
