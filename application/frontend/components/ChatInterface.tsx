@@ -157,7 +157,7 @@ export default function ChatInterface() {
             fileName: file.name,
             fileSize: file.size,
             fileType: file.type,
-            error: error.message || 'Upload failed'
+            error: error instanceof Error ? error.message : 'Upload failed'
           }
         });
       }
