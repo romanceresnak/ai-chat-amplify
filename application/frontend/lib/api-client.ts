@@ -1,13 +1,20 @@
+import { fetchAuthSession } from 'aws-amplify/auth';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export async function callLambdaFunction(functionPath: string, data: any, method: string = 'POST') {
   try {
     const url = new URL(`${API_URL}${functionPath}`);
     
+    // Get the current auth session
+    const session = await fetchAuthSession();
+    const token = session.tokens?.idToken?.toString();
+    
     const options: RequestInit = {
       method,
       headers: {
         'Content-Type': 'application/json',
+        ...(token && { 'Authorization': token })
       },
     };
 

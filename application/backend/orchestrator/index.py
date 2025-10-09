@@ -35,6 +35,185 @@ OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', 'scribbe-ai-dev-output')
 DOCUMENTS_BUCKET = os.environ.get('DOCUMENTS_BUCKET', 'scribbe-ai-dev-documents')
 TEMPLATE_PROCESSOR_ARN = os.environ.get('TEMPLATE_PROCESSOR_ARN', f'arn:aws:lambda:eu-west-1:873478944520:function:scribbe-ai-{ENVIRONMENT}-template-processor')
 BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'eu.anthropic.claude-3-5-sonnet-20240620-v1:0')
+AUDIT_LOGGER_ARN = os.environ.get('AUDIT_LOGGER_ARN', f'arn:aws:lambda:eu-west-1:873478944520:function:scribbe-ai-{ENVIRONMENT}-audit-logger')
+PATTERN_ANALYZER_ARN = os.environ.get('PATTERN_ANALYZER_ARN', f'arn:aws:lambda:eu-west-1:873478944520:function:scribbe-ai-{ENVIRONMENT}-pattern-analyzer')
+
+# Initialize DynamoDB for pattern insights
+dynamodb = boto3.resource('dynamodb')
+try:
+    patterns_table = dynamodb.Table(f'scribbe-ai-{ENVIRONMENT}-patterns')
+except:
+    patterns_table = None
+
+def verify_user_permissions(event: Dict[str, Any], required_permission: str = 'ReadOnly') -> tuple[bool, Optional[str], Optional[List[str]]]:
+    """
+    Verify user has required permissions based on Cognito groups.
+    Returns: (is_authorized, user_id, user_groups)
+    """
+    try:
+        # Extract user info from Lambda authorizer
+        request_context = event.get('requestContext', {})
+        authorizer = request_context.get('authorizer', {})
+        claims = authorizer.get('claims', {})
+        
+        # Get user ID and groups
+        user_id = claims.get('sub') or claims.get('username', 'anonymous')
+        groups_claim = claims.get('cognito:groups', [])
+        
+        # Ensure groups is a list
+        if isinstance(groups_claim, str):
+            groups = [groups_claim]
+        elif isinstance(groups_claim, list):
+            groups = groups_claim
+        else:
+            groups = []
+        
+        # Define permission hierarchy
+        permission_levels = {
+            'Admin': 3,
+            'WriteAccess': 2,
+            'ReadOnly': 1
+        }
+        
+        # Get user's highest permission level
+        user_level = 0
+        for group in groups:
+            if group in permission_levels:
+                user_level = max(user_level, permission_levels[group])
+        
+        # Check if user has required permission
+        required_level = permission_levels.get(required_permission, 1)
+        is_authorized = user_level >= required_level
+        
+        logger.info(f"Permission check - User: {user_id}, Groups: {groups}, Required: {required_permission}, Authorized: {is_authorized}")
+        
+        return is_authorized, user_id, groups
+        
+    except Exception as e:
+        logger.error(f"Error verifying permissions: {str(e)}")
+        return False, None, []
+
+def log_audit_event(user_id: str, action: str, resource: str, event_type: str, details: Dict[str, Any] = None):
+    """Send audit log event to audit logger Lambda"""
+    try:
+        audit_payload = {
+            'userId': user_id,
+            'action': action,
+            'resource': resource,
+            'eventType': event_type,
+            'details': details or {},
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+        # Invoke audit logger Lambda asynchronously
+        lambda_client.invoke(
+            FunctionName=AUDIT_LOGGER_ARN,
+            InvocationType='Event',  # Asynchronous
+            Payload=json.dumps(audit_payload)
+        )
+        
+        logger.info(f"Audit event logged: {action} by {user_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to log audit event: {str(e)}")
+
+def trigger_pattern_analysis(trigger_type: str, context: Dict[str, Any] = None):
+    """Trigger pattern analysis Lambda for insights"""
+    try:
+        pattern_payload = {
+            'trigger': trigger_type,
+            'context': context or {},
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+        # Invoke pattern analyzer Lambda asynchronously
+        lambda_client.invoke(
+            FunctionName=PATTERN_ANALYZER_ARN,
+            InvocationType='Event',  # Asynchronous
+            Payload=json.dumps(pattern_payload)
+        )
+        
+        logger.info(f"Pattern analysis triggered: {trigger_type}")
+        
+    except Exception as e:
+        logger.error(f"Failed to trigger pattern analysis: {str(e)}")
+
+def get_pattern_insights() -> Dict[str, Any]:
+    """Get pattern insights from DynamoDB patterns table"""
+    try:
+        if not patterns_table:
+            return {
+                'error': 'Pattern insights not available',
+                'total_patterns': 0,
+                'insights': []
+            }
+        
+        # Scan recent patterns (last 30 days)
+        from datetime import timedelta
+        cutoff_date = (datetime.utcnow() - timedelta(days=30)).isoformat()
+        
+        response = patterns_table.scan(
+            FilterExpression='discovered_at > :cutoff',
+            ExpressionAttributeValues={':cutoff': cutoff_date},
+            Limit=50
+        )
+        
+        patterns = response.get('Items', [])
+        
+        if not patterns:
+            return {
+                'total_patterns': 0,
+                'pattern_types': {},
+                'top_insights': [],
+                'recommendations': ['No patterns discovered yet. Upload documents to generate insights.']
+            }
+        
+        # Analyze patterns
+        pattern_types = {}
+        confidence_scores = []
+        top_patterns = []
+        
+        for pattern in patterns:
+            pattern_type = pattern.get('pattern_type', 'unknown')
+            pattern_types[pattern_type] = pattern_types.get(pattern_type, 0) + 1
+            
+            confidence = float(pattern.get('confidence_score', 0))
+            confidence_scores.append(confidence)
+            
+            top_patterns.append({
+                'description': pattern.get('description', ''),
+                'details': pattern.get('details', ''),
+                'confidence': confidence,
+                'type': pattern_type
+            })
+        
+        # Sort by confidence
+        top_patterns.sort(key=lambda x: x['confidence'], reverse=True)
+        
+        # Generate recommendations
+        recommendations = []
+        if pattern_types.get('document_content', 0) > 3:
+            recommendations.append('Consistent document themes detected - consider creating standardized templates')
+        if pattern_types.get('user_queries', 0) > 5:
+            recommendations.append('Common query patterns found - consider implementing shortcuts for frequent requests')
+        if pattern_types.get('client_behavior', 0) > 2:
+            recommendations.append('User behavior patterns identified - optimize features based on usage trends')
+        
+        return {
+            'total_patterns': len(patterns),
+            'pattern_types': pattern_types,
+            'average_confidence': round(sum(confidence_scores) / len(confidence_scores), 2) if confidence_scores else 0,
+            'top_insights': top_patterns[:5],
+            'recommendations': recommendations or ['Continue using the system to generate more insights']
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting pattern insights: {str(e)}")
+        return {
+            'error': str(e),
+            'total_patterns': 0,
+            'insights': []
+        }
 
 def create_basic_powerpoint(instructions: str, timestamp: str) -> bytes:
     """Create a basic PowerPoint file using OpenXML format without external dependencies"""
@@ -722,12 +901,33 @@ class PresentationAgent(Agent):
             instructions = request.get('instructions', '')
             template_key = request.get('template_key', 'PUBLIC IP South Plains (1).pptx')
             mode = request.get('mode', 'modify')
+            user_id = request.get('user_id', 'anonymous')
             
             # Generate unique presentation ID
             presentation_id = str(uuid.uuid4())
             timestamp = datetime.utcnow().isoformat()
             
             logger.info(f"PresentationAgent processing: {presentation_id}")
+            
+            # Log presentation generation event
+            log_audit_event(
+                user_id,
+                'PRESENTATION_GENERATION',
+                presentation_id,
+                'presentation_creation',
+                {
+                    'mode': mode,
+                    'template': template_key if mode == 'modify' else 'new',
+                    'instructions_length': len(instructions)
+                }
+            )
+            
+            # Trigger pattern analysis for presentation requests
+            trigger_pattern_analysis('presentation_request', {
+                'user_id': user_id,
+                'mode': mode,
+                'instructions_preview': instructions[:100] + '...' if len(instructions) > 100 else instructions
+            })
             
             if mode == 'modify' and template_key:
                 # Modify existing presentation
@@ -989,6 +1189,7 @@ class DocumentAgent(Agent):
         try:
             message = request.get('instructions', '')
             files = request.get('files', [])
+            user_id = request.get('user_id', 'anonymous')
             
             if not files:
                 return {
@@ -998,6 +1199,26 @@ class DocumentAgent(Agent):
                 }
             
             logger.info(f"DocumentAgent analyzing {len(files)} files")
+            
+            # Log document analysis event
+            for file_key in files:
+                log_audit_event(
+                    user_id,
+                    'DOCUMENT_ANALYSIS',
+                    file_key,
+                    'document_processing',
+                    {
+                        'filename': file_key.split('/')[-1],
+                        'analysis_type': 'ai_analysis'
+                    }
+                )
+            
+            # Trigger pattern analysis for document uploads
+            trigger_pattern_analysis('document_upload', {
+                'user_id': user_id,
+                'file_count': len(files),
+                'instructions': message[:100] + '...' if len(message) > 100 else message
+            })
             
             # Analyze documents using Bedrock
             analysis_prompt = f"""Analyze the following documents and {message}.
@@ -1211,11 +1432,65 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         logger.info(f"Received event: {json.dumps(event)}")
         
-        # Check HTTP method
+        # Check HTTP method and path
         http_method = event.get('httpMethod', 'POST')
+        path = event.get('path', '')
         
+        # Handle audit logging endpoint
+        if path == '/audit' and http_method == 'POST':
+            # Verify user is authenticated (any role can log audit events)
+            is_authorized, user_id, user_groups = verify_user_permissions(event, 'ReadOnly')
+            if not is_authorized:
+                return cors_response(403, {
+                    'error': 'Forbidden',
+                    'message': 'Authentication required'
+                })
+            
+            # Parse audit event data
+            body_str = event.get('body', '{}')
+            audit_data = json.loads(body_str)
+            
+            # Forward to audit logger
+            log_audit_event(
+                user_id,
+                audit_data.get('action', 'UNKNOWN'),
+                audit_data.get('resource', ''),
+                audit_data.get('eventType', 'user_action'),
+                audit_data.get('details', {})
+            )
+            
+            return cors_response(200, {'message': 'Audit event logged'})
+        
+        # Handle pattern insights endpoint
+        if path == '/patterns' and http_method == 'GET':
+            # Verify user has at least ReadOnly permission
+            is_authorized, user_id, user_groups = verify_user_permissions(event, 'ReadOnly')
+            if not is_authorized:
+                return cors_response(403, {
+                    'error': 'Forbidden',
+                    'message': 'You need at least ReadOnly permissions to view patterns'
+                })
+            
+            # Get pattern insights
+            insights = get_pattern_insights()
+            log_audit_event(user_id, 'VIEW_PATTERNS', 'pattern_insights', 'access')
+            
+            return cors_response(200, {
+                'insights': insights,
+                'timestamp': datetime.utcnow().isoformat()
+            })
+        
+        # Verify user permissions
         if http_method == 'GET':
-            # List presentations
+            # List presentations requires ReadOnly
+            is_authorized, user_id, user_groups = verify_user_permissions(event, 'ReadOnly')
+            if not is_authorized:
+                return cors_response(403, {
+                    'error': 'Forbidden',
+                    'message': 'You need at least ReadOnly permissions to list presentations'
+                })
+            # Log audit event
+            log_audit_event(user_id, 'LIST_PRESENTATIONS', 'presentations', 'access')
             return list_presentations()
         
         # Parse request for POST
@@ -1223,6 +1498,37 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not body_str:
             body_str = '{}'
         body = json.loads(body_str)
+        
+        # Determine required permission based on request
+        instructions = body.get('instructions', '')
+        files = body.get('files', [])
+        
+        # Presentations and file uploads require WriteAccess
+        if files or 'presentation' in instructions.lower() or 'slide' in instructions.lower():
+            required_permission = 'WriteAccess'
+        else:
+            required_permission = 'ReadOnly'
+        
+        # Verify user permissions
+        is_authorized, user_id, user_groups = verify_user_permissions(event, required_permission)
+        if not is_authorized:
+            return cors_response(403, {
+                'error': 'Forbidden',
+                'message': f'You need {required_permission} permissions for this operation'
+            })
+        
+        # Log audit event for the request
+        log_audit_event(
+            user_id, 
+            'API_REQUEST', 
+            'orchestrator',
+            'api_call',
+            {
+                'instructions': instructions[:100] + '...' if len(instructions) > 100 else instructions,
+                'has_files': bool(files),
+                'groups': user_groups
+            }
+        )
         
         # Check if we should use LangChain orchestrator
         use_langchain = body.get('use_langchain', False) or os.environ.get('USE_LANGCHAIN', 'false').lower() == 'true'
@@ -1242,11 +1548,25 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'document_key': body.get('document_key', ''),
             'files': body.get('files', []),
             'mode': body.get('mode', 'modify'),
-            'analyze_structure': body.get('analyze_structure', False)
+            'analyze_structure': body.get('analyze_structure', False),
+            'user_id': user_id,  # Pass user_id for audit logging
+            'user_groups': user_groups
         }
         
         # Route request through original orchestrator
         response = orchestrator.route_request(request)
+        
+        # Log successful completion
+        log_audit_event(
+            user_id,
+            'REQUEST_COMPLETED',
+            response.get('routed_to', 'unknown'),
+            'success',
+            {
+                'status': response.get('status', 'unknown'),
+                'agent': response.get('agent', 'unknown')
+            }
+        )
         
         # Return CORS-safe response
         return cors_response(200, response)

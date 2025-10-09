@@ -5,9 +5,12 @@ import { useState, useRef, useEffect } from 'react';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { uploadData } from 'aws-amplify/storage';
 import { useDropzone } from 'react-dropzone';
-import { Send, Upload, X, FileText, Loader2 } from 'lucide-react';
+import { Send, Upload, X, FileText, Loader2, Lock } from 'lucide-react';
 import { isPresentationRequest, generatePresentation } from '@/lib/api-client';
 import { getCurrentUser } from 'aws-amplify/auth';
+import { useUserRole } from '@/hooks/useUserRole';
+import { ProtectedComponent } from '@/components/ProtectedComponent';
+import { uploadFileWithStructure } from '@/lib/s3-manager-client';
 
 interface Message {
   id: string;
@@ -22,6 +25,10 @@ interface UploadedFile {
   key: string;
   size: number;
   kbSynced?: boolean; // Knowledge base sync status
+  structured?: boolean; // Uses new structured S3 storage
+  versioned?: boolean; // File was versioned to avoid conflicts
+  systemId?: string; // Client system ID
+  uploadTimestamp?: string; // Upload timestamp
 }
 
 export default function ChatInterface() {
@@ -32,6 +39,7 @@ export default function ChatInterface() {
   const [isUploading, setIsUploading] = useState(false);
   const [useLangChain, setUseLangChain] = useState(true); // Default to true for web search
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { canRead, canWrite, isAdmin, role } = useUserRole();
 
   useEffect(() => {
     scrollToBottom();
@@ -71,96 +79,71 @@ export default function ChatInterface() {
 
     for (const file of acceptedFiles) {
       try {
-        // Upload to both chat-files and knowledge-base
-        const timestamp = Date.now();
-        const chatKey = `chat-files/${timestamp}-${file.name}`;
-        const kbKey = `knowledge-base/${timestamp}-${file.name}`;
-        const fileId = `${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        console.log(`🔄 Uploading file with S3 Manager: ${file.name}`);
         
-        // Convert file to Blob to avoid stream reading issues with Amplify
-        const fileBlob = new Blob([file], { type: file.type });
-        
-        // Upload to chat storage for immediate use
-        const chatResult = await uploadData({
-          key: chatKey,
-          data: fileBlob,
-          options: {
-            contentType: file.type,
-            metadata: {
-              uploadedBy: userId,
-              uploadedAt: new Date().toISOString(),
-              fileId: fileId
-            }
+        // Upload using new S3 manager with structured storage and tagging
+        const uploadResult = await uploadFileWithStructure(
+          file,
+          process.env.NEXT_PUBLIC_CLIENT_SYSTEM_ID || 'scribbe-ai-system',
+          {
+            upload_source: 'chat_interface',
+            user_session: userId,
+            upload_timestamp: new Date().toISOString()
           }
-        }).result;
+        );
 
-        // Try to upload to knowledge base for future queries
-        let kbSynced = false;
-        try {
-          console.log(`🔄 Attempting KB upload: ${kbKey} to bucket: ${process.env.NEXT_PUBLIC_DOCUMENTS_BUCKET}`);
-          const kbResult = await uploadData({
-            key: kbKey,
-            data: fileBlob,
-            options: {
-              contentType: file.type,
-              metadata: {
-                uploadedBy: userId,
-                uploadedAt: new Date().toISOString(),
-                fileId: fileId,
-                originalName: file.name
-              },
-              bucket: {
-                bucketName: process.env.NEXT_PUBLIC_DOCUMENTS_BUCKET || 'scribbe-ai-dev-documents',
-                region: 'eu-west-1'
-              }
-            }
-          }).result;
-          console.log(`📚 Added to knowledge base: ${file.name}`, kbResult);
-          kbSynced = true;
-
-          // Log audit trail for successful upload
+        if (uploadResult.success && uploadResult.file_info) {
+          const fileInfo = uploadResult.file_info;
+          console.log(`✅ File uploaded successfully: ${fileInfo.s3_key}`);
+          
+          // Log successful upload audit event
           await logAuditEvent({
             eventType: 'file_upload',
             userId: userId,
-            action: 'UPLOAD_FILE',
-            resource: kbKey,
+            action: 'UPLOAD_FILE_STRUCTURED',
+            resource: fileInfo.s3_key,
             details: {
-              fileId: fileId,
-              fileName: file.name,
-              fileSize: file.size,
-              fileType: file.type,
-              s3Key: kbKey,
-              kbSynced: true
+              original_filename: file.name,
+              s3_key: fileInfo.s3_key,
+              bucket: fileInfo.bucket,
+              file_size: file.size,
+              file_type: file.type,
+              versioned: fileInfo.versioned,
+              client_system_id: fileInfo.client_system_id,
+              tags: fileInfo.tags,
+              structured_storage: true,
+              upload_timestamp: fileInfo.upload_timestamp
             }
           });
 
-        } catch (kbError) {
-          console.error('❌ Failed to add to knowledge base:', kbError);
+          newFiles.push({
+            name: fileInfo.original_filename,
+            key: fileInfo.s3_key,
+            size: fileInfo.file_size,
+            kbSynced: true, // New S3 manager automatically handles KB sync
+            structured: true,
+            versioned: fileInfo.versioned,
+            systemId: fileInfo.client_system_id,
+            uploadTimestamp: fileInfo.upload_timestamp
+          });
+        } else {
+          console.error('❌ Upload failed:', uploadResult.error);
           
-          // Log audit trail for failed upload
+          // Log failed upload audit event
           await logAuditEvent({
             eventType: 'file_upload',
             userId: userId,
             action: 'UPLOAD_FILE_FAILED',
-            resource: kbKey,
+            resource: file.name,
             details: {
-              fileId: fileId,
-              fileName: file.name,
-              fileSize: file.size,
-              fileType: file.type,
-              s3Key: kbKey,
-              error: kbError.message || 'Unknown error',
-              kbSynced: false
+              filename: file.name,
+              file_size: file.size,
+              file_type: file.type,
+              error: uploadResult.error || 'Unknown error',
+              structured_storage: false
             }
           });
         }
-
-        newFiles.push({
-          name: file.name,
-          key: chatResult.key,
-          size: file.size,
-          kbSynced: kbSynced,
-        });
       } catch (error) {
         console.error('Error uploading file:', error);
         
@@ -187,11 +170,16 @@ export default function ChatInterface() {
   // Helper function to log audit events
   const logAuditEvent = async (auditData: any) => {
     try {
-      // In a real implementation, this would call your audit logging API
-      const response = await fetch('/api/audit-log', {
+      // Call the orchestrator with audit event data
+      // The orchestrator will forward this to the audit logger Lambda
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/audit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token && { 'Authorization': token })
         },
         body: JSON.stringify({
           ...auditData,
@@ -359,6 +347,11 @@ export default function ChatInterface() {
       </div>
 
       <div className="border-t bg-white p-4">
+        {role && (
+          <div className="mb-2 text-xs text-gray-500">
+            Current role: <span className="font-medium">{role}</span>
+          </div>
+        )}
         {uploadedFiles.length > 0 && (
           <div className="mb-3 p-3 bg-gray-100 rounded-lg">
             <p className="text-sm font-medium text-gray-700 mb-2">Attached files:</p>
@@ -369,10 +362,21 @@ export default function ChatInterface() {
                     <FileText className="w-4 h-4 text-gray-500" />
                     <span className="flex items-center gap-1">
                       {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                      {file.structured ? (
+                        <span className="text-blue-600 text-xs" title="Structured S3 Storage">🏗️</span>
+                      ) : null}
+                      {file.versioned ? (
+                        <span className="text-purple-600 text-xs" title="Versioned File">🔄</span>
+                      ) : null}
                       {file.kbSynced ? (
                         <span className="text-green-600 text-xs" title="Added to Knowledge Base">📚</span>
                       ) : (
                         <span className="text-gray-400 text-xs" title="Not in Knowledge Base">📄</span>
+                      )}
+                      {file.systemId && (
+                        <span className="text-xs text-gray-500" title={`System: ${file.systemId}`}>
+                          [{file.systemId.split('-').pop()}]
+                        </span>
                       )}
                     </span>
                   </span>
@@ -405,19 +409,28 @@ export default function ChatInterface() {
         </div>
 
         <div className="flex gap-2">
-          <div
-            {...getRootProps()}
-            className={`p-2 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
-              isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-            } ${isUploading ? 'opacity-50' : ''}`}
+          <ProtectedComponent 
+            requiredRole="WriteAccess"
+            fallback={
+              <div className="p-2 border-2 border-dashed rounded-lg border-gray-200 bg-gray-50" title="Upload requires Write Access">
+                <Lock className="w-5 h-5 text-gray-400" />
+              </div>
+            }
           >
-            <input {...getInputProps()} />
-            {isUploading ? (
-              <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />
-            ) : (
-              <Upload className="w-5 h-5 text-gray-500" />
-            )}
-          </div>
+            <div
+              {...getRootProps()}
+              className={`p-2 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+              } ${isUploading ? 'opacity-50' : ''}`}
+            >
+              <input {...getInputProps()} />
+              {isUploading ? (
+                <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />
+              ) : (
+                <Upload className="w-5 h-5 text-gray-500" />
+              )}
+            </div>
+          </ProtectedComponent>
 
           <input
             type="text"
@@ -431,8 +444,9 @@ export default function ChatInterface() {
 
           <button
             onClick={sendMessage}
-            disabled={isLoading || (!input.trim() && uploadedFiles.length === 0)}
+            disabled={!canRead || isLoading || (!input.trim() && uploadedFiles.length === 0)}
             className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            title={!canRead ? 'You need at least Read access to send messages' : ''}
           >
             {isLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
