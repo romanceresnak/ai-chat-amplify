@@ -12,6 +12,12 @@ import re
 import base64
 from abc import ABC, abstractmethod
 
+# Import AI presentation generator
+try:
+    from ai_presentation_generator import AIPresentationGenerator
+except ImportError:
+    AIPresentationGenerator = None
+
 # Load environment variables from .env file
 try:
     import env_loader
@@ -895,6 +901,10 @@ class Agent(ABC):
 class PresentationAgent(Agent):
     """Agent for handling PowerPoint generation and modification"""
     
+    def __init__(self):
+        """Initialize the presentation agent"""
+        self.ai_generator = AIPresentationGenerator() if AIPresentationGenerator else None
+    
     def process(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Process presentation generation request"""
         try:
@@ -902,12 +912,14 @@ class PresentationAgent(Agent):
             template_key = request.get('template_key', 'PUBLIC IP South Plains (1).pptx')
             mode = request.get('mode', 'modify')
             user_id = request.get('user_id', 'anonymous')
+            use_ai = request.get('use_ai', True)  # Default to using AI
             
             # Generate unique presentation ID
             presentation_id = str(uuid.uuid4())
             timestamp = datetime.utcnow().isoformat()
             
             logger.info(f"PresentationAgent processing: {presentation_id}")
+            logger.info(f"Using AI: {use_ai and self.ai_generator is not None}")
             
             # Log presentation generation event
             log_audit_event(
@@ -929,12 +941,9 @@ class PresentationAgent(Agent):
                 'instructions_preview': instructions[:100] + '...' if len(instructions) > 100 else instructions
             })
             
-            if mode == 'modify' and template_key:
-                # Modify existing presentation
-                return self._modify_presentation(presentation_id, instructions, template_key)
-            else:
-                # Create new presentation
-                return self._create_presentation(presentation_id, instructions, timestamp)
+            # Always create new presentation based on instructions
+            # This ensures each request generates unique content
+            return self._create_presentation(presentation_id, instructions, timestamp)
                 
         except Exception as e:
             logger.error(f"PresentationAgent error: {str(e)}")
@@ -990,37 +999,90 @@ class PresentationAgent(Agent):
     
     def _create_presentation(self, presentation_id: str, instructions: str, timestamp: str) -> Dict[str, Any]:
         """Create new presentation"""
-        pptx_content = create_basic_powerpoint(instructions, timestamp)
-        
-        # Save PowerPoint file to S3
-        output_key = f"{presentation_id}/presentation.pptx"
-        
-        s3.put_object(
-            Bucket=OUTPUT_BUCKET,
-            Key=output_key,
-            Body=pptx_content,
-            ContentType='application/vnd.openxmlformats-officedocument.presentationml.presentation'
-        )
-        
-        logger.info(f"New PowerPoint saved to S3: {output_key}")
-        
-        # Generate presigned URL for download
-        download_url = s3.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': OUTPUT_BUCKET, 'Key': output_key},
-            ExpiresIn=3600
-        )
-        
-        return {
-            'presentation_id': presentation_id,
-            'output_url': f"s3://{OUTPUT_BUCKET}/{output_key}",
-            'message': 'Presentation created successfully!',
-            'presentation_name': output_key.split('/')[-1],
-            'download_url': download_url,
-            'status': 'success',
-            'mode': 'create',
-            'agent': 'presentation'
-        }
+        try:
+            # Use AI generator if available and enabled
+            if self.ai_generator and instructions:
+                logger.info("Using AI presentation generator")
+                
+                # Generate presentation using AI
+                pptx_content = self.ai_generator.generate_presentation(instructions)
+                
+                # Determine filename based on content
+                if "loan portfolio" in instructions.lower():
+                    filename = "loan_portfolio_presentation.pptx"
+                elif "private equity" in instructions.lower() or "investment committee" in instructions.lower():
+                    filename = "pe_investment_committee_deck.pptx"
+                elif "debt issuance" in instructions.lower():
+                    filename = "debt_issuance_presentation.pptx"
+                else:
+                    filename = "ai_generated_presentation.pptx"
+            else:
+                logger.info("Using basic presentation generator")
+                pptx_content = create_basic_powerpoint(instructions, timestamp)
+                filename = "presentation.pptx"
+            
+            # Save PowerPoint file to S3
+            output_key = f"{presentation_id}/{filename}"
+            
+            s3.put_object(
+                Bucket=OUTPUT_BUCKET,
+                Key=output_key,
+                Body=pptx_content,
+                ContentType='application/vnd.openxmlformats-officedocument.presentationml.presentation'
+            )
+            
+            logger.info(f"New PowerPoint saved to S3: {output_key}")
+            
+            # Generate presigned URL for download
+            download_url = s3.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': OUTPUT_BUCKET, 'Key': output_key},
+                ExpiresIn=3600
+            )
+            
+            return {
+                'presentation_id': presentation_id,
+                'output_url': f"s3://{OUTPUT_BUCKET}/{output_key}",
+                'message': 'Presentation created successfully!',
+                'presentation_name': filename,
+                'download_url': download_url,
+                'status': 'success',
+                'mode': 'create',
+                'agent': 'presentation',
+                'ai_generated': bool(self.ai_generator and instructions)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in _create_presentation: {str(e)}")
+            # Fallback to basic presentation if AI fails
+            pptx_content = create_basic_powerpoint(instructions, timestamp)
+            output_key = f"{presentation_id}/presentation.pptx"
+            
+            s3.put_object(
+                Bucket=OUTPUT_BUCKET,
+                Key=output_key,
+                Body=pptx_content,
+                ContentType='application/vnd.openxmlformats-officedocument.presentationml.presentation'
+            )
+            
+            download_url = s3.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': OUTPUT_BUCKET, 'Key': output_key},
+                ExpiresIn=3600
+            )
+            
+            return {
+                'presentation_id': presentation_id,
+                'output_url': f"s3://{OUTPUT_BUCKET}/{output_key}",
+                'message': 'Presentation created with basic template (AI generation failed)',
+                'presentation_name': 'presentation.pptx',
+                'download_url': download_url,
+                'status': 'success',
+                'mode': 'create',
+                'agent': 'presentation',
+                'ai_generated': False,
+                'error': str(e)
+            }
 
 # Chat Agent
 class ChatAgent(Agent):

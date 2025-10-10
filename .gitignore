@@ -49,3 +49,7 @@ credentials
 layer_build/
 python-minimal/
 *.zip
+infrastructure/terraform/modules/lambda/layers/
+infrastructure/terraform/modules/lambda/*.zip
+orchestrator-layer.zip
+tfplan

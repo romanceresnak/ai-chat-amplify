@@ -3,24 +3,53 @@ resource "aws_s3_bucket" "lambda_deployment" {
   bucket = "${var.project_name}-${var.environment}-lambda-deployment"
 }
 
-# Upload Lambda layer to S3
-resource "aws_s3_object" "python_libs_layer" {
-  bucket = aws_s3_bucket.lambda_deployment.id
-  key    = "layers/python-libs.zip"
-  source = "${path.module}/layers/python-libs.zip"
-  etag   = filemd5("${path.module}/layers/python-libs.zip")
+# Ensure the layer ZIP file exists (create if needed)
+resource "null_resource" "ensure_layer_exists" {
+  triggers = {
+    layer_check = fileexists("${path.module}/python-deps-layer.zip") ? "exists" : "missing"
+  }
+  
+  provisioner "local-exec" {
+    command = <<-EOT
+      if [ ! -f "${path.module}/python-deps-layer.zip" ]; then
+        echo "Lambda layer not found, creating..."
+        cd ${path.module}
+        if command -v python3 &> /dev/null; then
+          python3 create_simple_layer.py
+        elif command -v python &> /dev/null; then
+          python create_simple_layer.py
+        else
+          echo "Error: Python not found. Please install Python 3."
+          exit 1
+        fi
+      else
+        echo "Lambda layer already exists"
+      fi
+    EOT
+    interpreter = ["bash", "-c"]
+  }
 }
 
-# Lambda Layers
-resource "aws_lambda_layer_version" "python_libs" {
-  layer_name = "${var.project_name}-python-libs"
+# Upload Lambda layer to S3
+resource "aws_s3_object" "python_deps_layer" {
+  bucket = aws_s3_bucket.lambda_deployment.id
+  key    = "layers/python-deps-layer.zip"
+  source = "${path.module}/python-deps-layer.zip"
   
-  s3_bucket = aws_s3_bucket.lambda_deployment.id
-  s3_key    = aws_s3_object.python_libs_layer.key
+  depends_on = [null_resource.ensure_layer_exists]
+}
+
+# Lambda Layer with all Python dependencies
+resource "aws_lambda_layer_version" "python_deps" {
+  layer_name          = "${var.project_name}-${var.environment}-python-deps"
+  description         = "Python dependencies including python-pptx, langchain, boto3"
+  
+  s3_bucket           = aws_s3_bucket.lambda_deployment.id
+  s3_key              = aws_s3_object.python_deps_layer.key
   
   compatible_runtimes = ["python3.11"]
   
-  depends_on = [aws_s3_object.python_libs_layer]
+  depends_on = [aws_s3_object.python_deps_layer]
 }
 
 # Orchestrator Lambda
@@ -47,7 +76,7 @@ resource "aws_lambda_function" "orchestrator" {
     }
   }
 
-  layers = [aws_lambda_layer_version.python_libs.arn]
+  layers = [aws_lambda_layer_version.python_deps.arn]
 
   dynamic "vpc_config" {
     for_each = var.vpc_config != null ? [1] : []
@@ -75,7 +104,7 @@ resource "aws_lambda_function" "content_generator" {
     }
   }
 
-  layers = [aws_lambda_layer_version.python_libs.arn]
+  layers = [aws_lambda_layer_version.python_deps.arn]
 }
 
 # Template Processor Lambda
@@ -96,7 +125,7 @@ resource "aws_lambda_function" "template_processor" {
     }
   }
 
-  layers = [aws_lambda_layer_version.python_libs.arn]
+  layers = [aws_lambda_layer_version.python_deps.arn]
 }
 
 # Archive files for Lambda deployment
