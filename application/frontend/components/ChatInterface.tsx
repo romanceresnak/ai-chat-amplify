@@ -9,7 +9,6 @@ import { Send, Upload, X, FileText, Loader2, Lock } from 'lucide-react';
 import { isPresentationRequest, generatePresentation } from '@/lib/api-client';
 import { getCurrentUser } from 'aws-amplify/auth';
 import { useUserRole } from '@/hooks/useUserRole';
-import { uploadFileWithStructure } from '@/lib/s3-manager-client';
 
 interface Message {
   id: string;
@@ -78,55 +77,56 @@ export default function ChatInterface() {
 
     for (const file of acceptedFiles) {
       try {
-        console.log(`🔄 Uploading file with S3 Manager: ${file.name}`);
+        console.log(`🔄 Uploading file to S3: ${file.name}`);
         
-        // Upload using new S3 manager with structured storage and tagging
-        const uploadResult = await uploadFileWithStructure(
-          file,
-          process.env.NEXT_PUBLIC_CLIENT_SYSTEM_ID || 'scribbe-ai-system',
-          {
-            upload_source: 'chat_interface',
-            user_session: userId,
-            upload_timestamp: new Date().toISOString()
+        // Upload directly to S3 using Amplify Storage
+        const key = `public/chat-files/${userId}/${Date.now()}-${file.name}`;
+        const uploadResult = await uploadData({
+          key,
+          data: file,
+          options: {
+            contentType: file.type,
+            metadata: {
+              original_filename: file.name,
+              user_id: userId,
+              upload_source: 'chat_interface',
+              upload_timestamp: new Date().toISOString()
+            }
           }
-        );
+        }).result;
 
-        if (uploadResult.success && uploadResult.file_info) {
-          const fileInfo = uploadResult.file_info;
-          console.log(`✅ File uploaded successfully: ${fileInfo.s3_key}`);
+        if (uploadResult && uploadResult.key) {
+          console.log(`✅ File uploaded successfully: ${uploadResult.key}`);
           
           // Log successful upload audit event
           await logAuditEvent({
             eventType: 'file_upload',
             userId: userId,
             action: 'UPLOAD_FILE_STRUCTURED',
-            resource: fileInfo.s3_key,
+            resource: uploadResult.key,
             details: {
               original_filename: file.name,
-              s3_key: fileInfo.s3_key,
-              bucket: fileInfo.bucket,
+              s3_key: uploadResult.key,
+              bucket: 'scribbe-ai-dev-storage',
               file_size: file.size,
               file_type: file.type,
-              versioned: fileInfo.versioned,
-              client_system_id: fileInfo.client_system_id,
-              tags: fileInfo.tags,
               structured_storage: true,
-              upload_timestamp: fileInfo.upload_timestamp
+              upload_timestamp: new Date().toISOString()
             }
           });
 
           newFiles.push({
-            name: fileInfo.original_filename,
-            key: fileInfo.s3_key,
-            size: fileInfo.file_size,
-            kbSynced: true, // New S3 manager automatically handles KB sync
+            name: file.name,
+            key: uploadResult.key,
+            size: file.size,
+            kbSynced: false, // Will be synced by Lambda trigger
             structured: true,
-            versioned: fileInfo.versioned,
-            systemId: fileInfo.client_system_id,
-            uploadTimestamp: fileInfo.upload_timestamp
+            versioned: false,
+            systemId: 'scribbe-ai-system',
+            uploadTimestamp: new Date().toISOString()
           });
         } else {
-          console.error('❌ Upload failed:', uploadResult.error);
+          console.error('❌ Upload failed');
           
           // Log failed upload audit event
           await logAuditEvent({
@@ -138,7 +138,7 @@ export default function ChatInterface() {
               filename: file.name,
               file_size: file.size,
               file_type: file.type,
-              error: uploadResult.error || 'Unknown error',
+              error: 'Upload failed',
               structured_storage: false
             }
           });
