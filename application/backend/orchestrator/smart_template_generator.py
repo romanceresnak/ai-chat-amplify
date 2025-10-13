@@ -27,6 +27,7 @@ class SmartTemplateGenerator:
         self.documents_bucket = 'scribbe-ai-dev-documents'
         self.template_key = 'PUBLIC IP South Plains (1).pptx'
         self.template_cache = None
+        self.use_fresh_generation = True  # Skip templates due to corruption
     
     def generate_presentation(self, instructions: str) -> bytes:
         """Generate presentation by updating template values"""
@@ -40,28 +41,20 @@ class SmartTemplateGenerator:
         
         logger.info(f"Generating slide {slide_number}")
         
-        # Load appropriate template based on slide number
+        # IMPORTANT: S3 templates are corrupted - generate fresh presentations instead
+        if self.use_fresh_generation and slide_number in [23, 26]:
+            logger.info(f"Generating fresh slide {slide_number} due to template corruption")
+            return self._generate_fresh_slide(slide_number, slide_info)
+        
+        # Fallback to template approach (currently not used)
         template_key = self.template_key
         
-        # Use pre-built templates for slides with charts
-        if slide_number in [23, 26]:
-            template_map = {
-                23: 'templates/slide_23_template.pptx',
-                26: 'templates/slide_26_template.pptx'
-            }
-            template_key = template_map.get(slide_number)
-            logger.info(f"Using pre-built template with chart: {template_key}")
-            
-            # Don't cache these templates as they're slide-specific
-            response = s3.get_object(Bucket=self.documents_bucket, Key=template_key)
-            template_bytes = response['Body'].read()
-        else:
-            # Load main template for other slides
-            if not self.template_cache:
-                logger.info("Loading main template from S3...")
-                response = s3.get_object(Bucket=self.documents_bucket, Key=self.template_key)
-                self.template_cache = response['Body'].read()
-            template_bytes = self.template_cache
+        # Load main template for other slides
+        if not self.template_cache:
+            logger.info("Loading main template from S3...")
+            response = s3.get_object(Bucket=self.documents_bucket, Key=self.template_key)
+            self.template_cache = response['Body'].read()
+        template_bytes = self.template_cache
         
         # Load presentation
         prs = Presentation(io.BytesIO(template_bytes))
@@ -326,6 +319,83 @@ class SmartTemplateGenerator:
                         new_text = re.sub(r'\d+%', f'{percentage}%', text)
                         shape.text_frame.text = new_text
                         break
+    
+    def _generate_fresh_slide(self, slide_number: int, slide_info: Dict) -> bytes:
+        """Generate fresh slide from scratch due to template corruption"""
+        from pptx.chart.data import CategoryChartData
+        from pptx.enum.chart import XL_CHART_TYPE
+        from pptx.enum.text import PP_ALIGN
+        from pptx.util import Inches
+        
+        # Create new presentation
+        prs = Presentation()
+        prs.slide_width = Inches(10)
+        prs.slide_height = Inches(7.5)
+        
+        # Add slide with blank layout
+        slide_layout = prs.slide_layouts[6]  # Blank
+        slide = prs.slides.add_slide(slide_layout)
+        
+        # Add title
+        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(9), Inches(0.8))
+        title_frame = title_box.text_frame
+        title_frame.text = "Loan Portfolio"
+        title_p = title_frame.paragraphs[0]
+        title_p.font.size = Pt(28)
+        title_p.font.bold = True
+        
+        if slide_number in [23, 26]:
+            # Parse data
+            new_values = slide_info.get('new_values', {})
+            loans = new_values.get('loans', {})
+            yields = new_values.get('yields', {})
+            
+            # Add subtitle
+            subtitle = slide.shapes.add_textbox(Inches(0.5), Inches(1.2), Inches(6), Inches(0.5))
+            subtitle.text_frame.text = "Total Loans Held for Investment ($ in Millions)"
+            subtitle.text_frame.paragraphs[0].font.size = Pt(16)
+            
+            # Create chart data
+            chart_data = CategoryChartData()
+            quarters = ['2Q\'19', '3Q\'19', '4Q\'19', '1Q\'20', '2Q\'20']
+            chart_data.categories = quarters
+            
+            # Add loan values
+            loan_values = [loans.get(q, 0) for q in quarters]
+            chart_data.add_series('Loan Balances', loan_values)
+            
+            # Add chart
+            x, y, cx, cy = Inches(0.5), Inches(1.8), Inches(5.5), Inches(4.5)
+            chart = slide.shapes.add_chart(
+                XL_CHART_TYPE.COLUMN_CLUSTERED, x, y, cx, cy, chart_data
+            ).chart
+            
+            # Add highlights section
+            highlights_box = slide.shapes.add_textbox(Inches(6.5), Inches(1.8), Inches(3), Inches(4))
+            highlights_frame = highlights_box.text_frame
+            highlights_frame.text = "2Q'20 Highlights"
+            highlights_frame.paragraphs[0].font.bold = True
+            highlights_frame.paragraphs[0].font.size = Pt(14)
+            
+            # Add highlights content if available
+            highlights = new_values.get('highlights', [])
+            if highlights:
+                for highlight in highlights[:5]:  # Limit to 5
+                    p = highlights_frame.add_paragraph()
+                    p.text = f"• {highlight}"
+                    p.font.size = Pt(11)
+            
+            # Add footer
+            footer = slide.shapes.add_textbox(Inches(0), Inches(6.8), Inches(10), Inches(0.5))
+            footer.text_frame.text = "South Plains Financial, Inc."
+            footer.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+            footer.text_frame.paragraphs[0].font.size = Pt(10)
+        
+        # Save to bytes
+        output = io.BytesIO()
+        prs.save(output)
+        output.seek(0)
+        return output.getvalue()
 
 
 # For backward compatibility
