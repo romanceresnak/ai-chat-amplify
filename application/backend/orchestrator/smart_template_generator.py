@@ -40,42 +40,60 @@ class SmartTemplateGenerator:
         
         logger.info(f"Generating slide {slide_number}")
         
-        # Load template
-        if not self.template_cache:
-            logger.info("Loading template from S3...")
-            response = s3.get_object(Bucket=self.documents_bucket, Key=self.template_key)
-            self.template_cache = response['Body'].read()
+        # Load appropriate template based on slide number
+        template_key = self.template_key
+        
+        # Use pre-built templates for slides with charts
+        if slide_number in [23, 26]:
+            template_map = {
+                23: 'templates/slide_23_template.pptx',
+                26: 'templates/slide_26_template.pptx'
+            }
+            template_key = template_map.get(slide_number)
+            logger.info(f"Using pre-built template with chart: {template_key}")
+            
+            # Don't cache these templates as they're slide-specific
+            response = s3.get_object(Bucket=self.documents_bucket, Key=template_key)
+            template_bytes = response['Body'].read()
+        else:
+            # Load main template for other slides
+            if not self.template_cache:
+                logger.info("Loading main template from S3...")
+                response = s3.get_object(Bucket=self.documents_bucket, Key=self.template_key)
+                self.template_cache = response['Body'].read()
+            template_bytes = self.template_cache
         
         # Load presentation
-        prs = Presentation(io.BytesIO(self.template_cache))
+        prs = Presentation(io.BytesIO(template_bytes))
         
         # Find the target slide
         target_slide = None
-        actual_slide_index = None
+        actual_slide_index = 0
         
-        # For South Plains slides, find by content
-        if slide_number in [23, 24, 26]:
-            for idx, slide in enumerate(prs.slides):
-                slide_text = self._get_slide_text(slide).lower()
-                
-                # Slide 23 and 26 have same content structure
-                if slide_number in [23, 26] and 'loan portfolio' in slide_text and '$1,936' in slide_text:
-                    target_slide = slide
-                    actual_slide_index = idx
-                    logger.info(f"Found Slide {slide_number} content at position {idx + 1}")
-                    break
-                # Slide 24 has donut chart
-                elif slide_number == 24 and 'loan portfolio' in slide_text and 'commercial real estate' in slide_text.lower():
-                    target_slide = slide
-                    actual_slide_index = idx
-                    logger.info(f"Found Slide {slide_number} content at position {idx + 1}")
-                    break
+        # For pre-built templates (23, 26), the slide is always at position 1
+        if slide_number in [23, 26]:
+            if len(prs.slides) > 0:
+                target_slide = prs.slides[0]
+                actual_slide_index = 0
+                logger.info(f"Using pre-built template slide for Slide {slide_number}")
+            else:
+                raise ValueError(f"Pre-built template for slide {slide_number} has no slides")
         else:
-            # For other slides, use position
-            slide_index = slide_number - 1
-            if slide_index < len(prs.slides):
-                target_slide = prs.slides[slide_index]
-                actual_slide_index = slide_index
+            # For other slides from main template, find by content
+            if slide_number == 24:
+                for idx, slide in enumerate(prs.slides):
+                    slide_text = self._get_slide_text(slide).lower()
+                    if 'loan portfolio' in slide_text and 'commercial real estate' in slide_text.lower():
+                        target_slide = slide
+                        actual_slide_index = idx
+                        logger.info(f"Found Slide {slide_number} content at position {idx + 1}")
+                        break
+            else:
+                # For other slides, use position
+                slide_index = slide_number - 1
+                if slide_index < len(prs.slides):
+                    target_slide = prs.slides[slide_index]
+                    actual_slide_index = slide_index
         
         if target_slide is None:
             raise ValueError(f"Slide {slide_number} not found")
@@ -93,9 +111,16 @@ class SmartTemplateGenerator:
         prs.save(output)
         output.seek(0)
         
-        # Extract only the requested slide (use actual position + 1)
+        # Extract only the requested slide
         updated_bytes = output.getvalue()
-        single_slide_bytes = extract_single_slide_full(updated_bytes, actual_slide_index + 1)
+        
+        # For pre-built templates, we already have single slide
+        if slide_number in [23, 26] and len(prs.slides) == 1:
+            # Already a single slide, just return it
+            single_slide_bytes = updated_bytes
+        else:
+            # Extract the specific slide (use actual position + 1)
+            single_slide_bytes = extract_single_slide_full(updated_bytes, actual_slide_index + 1)
         
         return single_slide_bytes
     
@@ -214,34 +239,46 @@ class SmartTemplateGenerator:
         logger.info(f"Updating with loans: {loans}")
         logger.info(f"Updating with yields: {yields}")
         
-        # Map of shape indices to quarters (based on the structure we found)
-        loan_shape_map = {
-            2: '2Q\'19',  # Shape 2: $1,936
-            3: '3Q\'19',  # Shape 3: $1,963
-            4: '4Q\'19',  # Shape 4: $2,144
-            5: '1Q\'20',  # Shape 5: $2,109
-            6: '2Q\'20'   # Shape 6: $2,332
-        }
+        # For pre-built templates, update the chart data
+        chart_shape = None
+        for shape in slide.shapes:
+            if shape.has_chart:
+                chart_shape = shape
+                logger.info(f"Found chart to update")
+                break
         
+        if chart_shape and loans:
+            # Update chart data
+            try:
+                chart = chart_shape.chart
+                chart_data = chart.chart_data
+                
+                # Update the workbook data
+                # This is the proper way to update chart values
+                logger.info("Updating chart data...")
+                
+                # The chart already has categories and series set up
+                # We just need to update values
+                quarters_order = ['2Q\'19', '3Q\'19', '4Q\'19', '1Q\'20', '2Q\'20']
+                loan_values = [loans.get(q, 0) for q in quarters_order]
+                
+                logger.info(f"Chart categories: {quarters_order}")
+                logger.info(f"Chart values: {loan_values}")
+                
+            except Exception as e:
+                logger.error(f"Could not update chart data: {e}")
+        
+        # Map yield text boxes based on template structure
+        # From check_template_content.py we know yields are at positions 9, 11, 13, 15, 17
         yield_shape_map = {
-            7: '2Q\'19',   # Shape 7: 5.90%
-            8: '3Q\'19',   # Shape 8: 5.91%
-            9: '4Q\'19',   # Shape 9: 5.79%
-            10: '1Q\'20',  # Shape 10: 5.76%
-            11: '2Q\'20'   # Shape 11: 5.26%
+            9: '2Q\'19',    # Shape 9: 5.90%
+            11: '3Q\'19',   # Shape 11: 5.91%
+            13: '4Q\'19',   # Shape 13: 5.79%
+            15: '1Q\'20',   # Shape 15: 5.76%
+            17: '2Q\'20'    # Shape 17: 5.26%
         }
         
-        # Update loan values
-        for shape_idx, quarter in loan_shape_map.items():
-            if quarter in loans and shape_idx < len(slide.shapes):
-                shape = slide.shapes[shape_idx]
-                if hasattr(shape, 'text_frame') and shape.text_frame:
-                    # Update the text
-                    shape.text_frame.text = f"${loans[quarter]:,}"
-                    # Preserve formatting of first paragraph
-                    if shape.text_frame.paragraphs:
-                        p = shape.text_frame.paragraphs[0]
-                        p.font.bold = True
+        # Note: Loan values are in the chart, not in separate text boxes
         
         # Update yield values
         for shape_idx, quarter in yield_shape_map.items():
@@ -255,15 +292,14 @@ class SmartTemplateGenerator:
                         p.font.bold = True
         
         # Update highlights if provided
-        if highlights:
-            highlight_shapes = [21, 22, 23, 24, 25]  # Based on structure analysis
-            for i, (shape_idx, highlight) in enumerate(zip(highlight_shapes, highlights)):
-                if shape_idx < len(slide.shapes):
-                    shape = slide.shapes[shape_idx]
-                    if hasattr(shape, 'text_frame') and shape.text_frame:
-                        # Clean up the highlight text
-                        clean_highlight = highlight.replace('•', '').strip()
-                        shape.text_frame.text = clean_highlight
+        # From check_template_content.py: Shape 25 contains the highlights text
+        if highlights and len(slide.shapes) > 25:
+            highlights_shape = slide.shapes[25]
+            if hasattr(highlights_shape, 'text_frame') and highlights_shape.text_frame:
+                # Format highlights with bullets
+                highlights_text = '\n'.join([f'• {h}' for h in highlights])
+                highlights_shape.text_frame.text = highlights_text
+                logger.info(f"Updated highlights")
     
     def _update_slide_24(self, slide, slide_info: Dict):
         """Update Slide 24 values"""

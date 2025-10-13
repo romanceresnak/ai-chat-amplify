@@ -499,10 +499,11 @@ class AIPresentationGenerator:
         
         try:
             # Check if we can use pre-built template from S3
-            if slide_prompts and slide_prompts[0].get('slide_number') == 23:
-                template_result = self._use_template_from_s3()
+            if slide_prompts and slide_prompts[0].get('slide_number') in [23, 26]:
+                slide_number = slide_prompts[0].get('slide_number')
+                template_result = self._use_template_from_s3(slide_number)
                 if template_result:
-                    logger.info("Using pre-built template from S3")
+                    logger.info(f"Using pre-built template from S3 for slide {slide_number}")
                     return template_result
             
             # Fallback to XML-based generation
@@ -1093,13 +1094,21 @@ class AIPresentationGenerator:
     </p:clrMapOvr>
 </p:sldLayout>'''
     
-    def _use_template_from_s3(self) -> Optional[bytes]:
+    def _use_template_from_s3(self, slide_number: int = 23) -> Optional[bytes]:
         """Try to use pre-built template from S3"""
         try:
-            logger.info("Attempting to use template from S3...")
+            # Map slide numbers to template files
+            template_map = {
+                23: 'templates/slide_23_template.pptx',
+                26: 'templates/slide_26_template.pptx'
+            }
+            
+            template_key = template_map.get(slide_number, 'templates/slide_23_template.pptx')
+            logger.info(f"Attempting to use template from S3: {template_key}")
+            
             response = s3.get_object(
                 Bucket=self.documents_bucket,
-                Key='templates/slide_23_template.pptx'
+                Key=template_key
             )
             template_content = response['Body'].read()
             logger.info(f"Successfully loaded template from S3: {len(template_content)} bytes")
