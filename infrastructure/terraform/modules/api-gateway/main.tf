@@ -128,6 +128,42 @@ resource "aws_api_gateway_integration_response" "presentations_options" {
   }
 }
 
+# Integration Response for GET /presentations
+resource "aws_api_gateway_integration_response" "list_presentations_200" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.presentations.id
+  http_method = aws_api_gateway_method.list_presentations.http_method
+  status_code = aws_api_gateway_method_response.list_presentations_200.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST,GET'"
+  }
+
+  response_templates = {
+    "application/json" = ""
+  }
+}
+
+# Integration Response for POST /presentations
+resource "aws_api_gateway_integration_response" "create_presentation_200" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.presentations.id
+  http_method = aws_api_gateway_method.create_presentation.http_method
+  status_code = aws_api_gateway_method_response.create_presentation_200.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST,GET'"
+  }
+
+  response_templates = {
+    "application/json" = ""
+  }
+}
+
 # Lambda permissions for API Gateway
 resource "aws_lambda_permission" "api_gateway" {
   statement_id  = "AllowExecutionFromAPIGateway"
@@ -154,6 +190,10 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.presentations_options,
       aws_api_gateway_method_response.presentations_options,
       aws_api_gateway_integration_response.presentations_options,
+      aws_api_gateway_integration_response.list_presentations_200,
+      aws_api_gateway_integration_response.create_presentation_200,
+      aws_api_gateway_gateway_response.default_4xx,
+      aws_api_gateway_gateway_response.default_5xx,
     ]))
   }
 
@@ -168,6 +208,37 @@ resource "aws_api_gateway_stage" "main" {
   stage_name    = var.environment
 
   xray_tracing_enabled = true
+}
+
+# Gateway Responses for CORS on errors
+resource "aws_api_gateway_gateway_response" "default_4xx" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  response_type = "DEFAULT_4XX"
+
+  response_templates = {
+    "application/json" = "{\"message\":$context.error.messageString}"
+  }
+
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'OPTIONS,POST,GET'"
+  }
+}
+
+resource "aws_api_gateway_gateway_response" "default_5xx" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  response_type = "DEFAULT_5XX"
+
+  response_templates = {
+    "application/json" = "{\"message\":$context.error.messageString}"
+  }
+
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'OPTIONS,POST,GET'"
+  }
 }
 
 # CloudWatch Logs
