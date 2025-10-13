@@ -53,3 +53,9 @@ infrastructure/terraform/modules/lambda/layers/
 infrastructure/terraform/modules/lambda/*.zip
 orchestrator-layer.zip
 tfplan
+
+# Template extraction files
+template_extracted/
+
+# Local analysis files
+SOUTH_PLAINS_TEMPLATE_ANALYSIS.md
