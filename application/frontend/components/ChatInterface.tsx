@@ -166,34 +166,10 @@ export default function ChatInterface() {
     setIsUploading(false);
   };
 
-  // Helper function to log audit events
+  // Helper function to log audit events (disabled for now)
   const logAuditEvent = async (auditData: any) => {
-    try {
-      // Call the orchestrator with audit event data
-      // The orchestrator will forward this to the audit logger Lambda
-      const session = await fetchAuthSession();
-      const token = session.tokens?.idToken?.toString();
-      
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/audit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token && { 'Authorization': token })
-        },
-        body: JSON.stringify({
-          ...auditData,
-          timestamp: new Date().toISOString(),
-          ipAddress: window.location.hostname, // In production, get real IP
-          userAgent: navigator.userAgent
-        })
-      });
-      
-      if (!response.ok) {
-        console.warn('Failed to log audit event:', response.statusText);
-      }
-    } catch (error) {
-      console.warn('Error logging audit event:', error);
-    }
+    // Audit logging disabled until endpoint is implemented
+    console.log('Audit event:', auditData);
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
