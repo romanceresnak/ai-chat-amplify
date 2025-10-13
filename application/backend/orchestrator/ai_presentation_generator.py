@@ -452,12 +452,12 @@ class AIPresentationGenerator:
     
     def _add_footer(self, slide, text: str):
         """Add footer bar with text"""
-        # Add gray footer bar
+        # Add footer text at fixed position near bottom
         footer_height = Inches(0.5)
-        footer_y = slide.shapes.height - footer_height
+        footer_y = Inches(6.8)  # Fixed position near bottom for 16:9 slide
         
         # Add footer text
-        footer_shape = slide.shapes.add_textbox(Inches(0.5), Inches(6.8), Inches(12.333), footer_height)
+        footer_shape = slide.shapes.add_textbox(Inches(0.5), footer_y, Inches(12.333), footer_height)
         footer_frame = footer_shape.text_frame
         footer_frame.text = text
         footer_para = footer_frame.paragraphs[0]
@@ -498,25 +498,23 @@ class AIPresentationGenerator:
         logger.info(f"Detected slide prompts: {slide_prompts}")
         
         try:
-            # Check if we can use pre-built template from S3
-            if slide_prompts and slide_prompts[0].get('slide_number') in [23, 26]:
-                slide_number = slide_prompts[0].get('slide_number')
-                template_result = self._use_template_from_s3(slide_number)
-                if template_result:
-                    logger.info(f"Using pre-built template from S3 for slide {slide_number}")
-                    return template_result
+            # IMPORTANT: Skip S3 template due to corruption issues
+            # The template has broken internal relationships causing PowerPoint errors
+            # Instead, generate fresh presentations from scratch
             
-            # Fallback to XML-based generation
-            logger.info("Using XML-based presentation generator")
-            return self._generate_basic_presentation_xml(instructions, slide_prompts)
-                
-            # This code will be used once python-pptx is working in Lambda
-            if slide_prompts:
-                # Generate South Plains specific slides
+            if PPTX_AVAILABLE and slide_prompts:
+                # Generate South Plains specific slides from scratch
+                logger.info("Generating fresh presentation with python-pptx")
                 return self.generate_south_plains_slides(slide_prompts)
-            else:
-                # Fall back to general presentation generation
+            elif PPTX_AVAILABLE:
+                # Generate general presentation
+                logger.info("Generating general presentation with python-pptx")
                 return self._generate_general_presentation(instructions)
+            else:
+                # Fallback to XML-based generation
+                logger.info("Using XML-based presentation generator (python-pptx not available)")
+                return self._generate_basic_presentation_xml(instructions, slide_prompts)
+                
         except ImportError as e:
             logger.error(f"ImportError in generate_presentation: {e}")
             # Fallback to basic XML-based generation
