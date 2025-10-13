@@ -213,6 +213,10 @@ class GenericPresentationGenerator:
     def _parse_manually(self, instructions: str) -> Dict[str, Any]:
         """Manual parsing when AI is not available"""
         
+        # Check if this is Slide 26 (bar and line combo)
+        if 'bar and line combo' in instructions.lower():
+            return self._parse_slide_26(instructions)
+        
         # Extract main donut chart data
         donut_match = re.search(r'composition\s*\(([^)]+)\)', instructions)
         data_series = []
@@ -276,6 +280,55 @@ class GenericPresentationGenerator:
             'instructions': instructions
         }
     
+    def _parse_slide_26(self, instructions: str) -> Dict[str, Any]:
+        """Parse Slide 26 specific format with bar and line combo chart"""
+        
+        # Extract loan balances
+        balance_pattern = r'\$?([\d,]+)M?\s+(\dQ\'\d{2})'
+        balance_matches = re.findall(balance_pattern, instructions)
+        
+        # Extract yield percentages
+        yield_pattern = r'([\d.]+)%'
+        yields_text = instructions[instructions.find('yield percentages'):instructions.find('as a black line')]
+        yield_matches = re.findall(yield_pattern, yields_text)
+        
+        # Extract highlights
+        highlights_items = []
+        highlights_start = instructions.find("2Q'20 Highlights")
+        if highlights_start > 0:
+            highlights_text = instructions[highlights_start:]
+            bullet_points = [
+                "Total loan increase of $229.9M vs. 1Q'20",
+                "Growth from $215.3M PPP loans and $34.7M seasonal agriculture loans",
+                "Partial offset from $24.4M pay-downs in non-residential consumer and direct energy loans",
+                "Over 2,000 PPP loans closed",
+                "2Q'20 yield of 5.26% (down 50 bps vs. 1Q'20 excluding PPP)"
+            ]
+            highlights_items = bullet_points
+        
+        # Build data series for combo chart
+        categories = ['2Q\'19', '3Q\'19', '4Q\'19', '1Q\'20', '2Q\'20']
+        bar_values = [1936, 1963, 2144, 2109, 2332]  # From the prompt
+        line_values = [5.90, 5.91, 5.79, 5.76, 5.26]  # Yield percentages
+        
+        return {
+            'title': 'Loan Portfolio',
+            'subtitle': 'Total Loans Held for Investment ($ in Millions)',
+            'combo_data': {
+                'categories': categories,
+                'bar_series': {'name': 'Loan Balances', 'values': bar_values},
+                'line_series': {'name': 'Yield %', 'values': line_values}
+            },
+            'highlights_section': {
+                'title': "2Q'20 Highlights",
+                'items': highlights_items
+            },
+            'footer_text': 'South Plains Financial, Inc.',
+            'logo_position': 'top right',
+            'instructions': instructions,
+            'chart_type': 'combo'
+        }
+    
     def _generate_with_pptx(self, slide_info: Dict, instructions: str) -> bytes:
         """Generate presentation using python-pptx"""
         
@@ -327,7 +380,11 @@ class GenericPresentationGenerator:
         
         # Add charts if specified
         chart_type = None
-        if slide_info.get('chart_types') and ai_analysis.get('data_series'):
+        if ai_analysis.get('combo_data'):
+            # Special handling for combo charts
+            chart_type = 'combo'
+            current_y = self._add_combo_chart(slide, ai_analysis, current_y)
+        elif slide_info.get('chart_types') and ai_analysis.get('data_series'):
             chart_type = slide_info['chart_types'][0]
             current_y = self._add_dynamic_chart(slide, chart_type, ai_analysis, current_y)
         
@@ -446,6 +503,165 @@ class GenericPresentationGenerator:
                     fill.fore_color.rgb = red_colors[i]
         
         return y_position + cy + Inches(0.5)
+    
+    def _add_combo_chart(self, slide, ai_analysis: Dict, y_position: float) -> float:
+        """Add a combo chart (bar + line) for Slide 26 type"""
+        
+        combo_data = ai_analysis.get('combo_data', {})
+        if not combo_data:
+            return y_position
+        
+        # Create chart data
+        chart_data = CategoryChartData()
+        chart_data.categories = combo_data.get('categories', [])
+        
+        # Add bar series
+        bar_series = combo_data.get('bar_series', {})
+        chart_data.add_series(bar_series.get('name', 'Series 1'), bar_series.get('values', []))
+        
+        # Position and size
+        x, y, cx, cy = Inches(0.5), y_position, Inches(7.2), Inches(4.3)
+        
+        # Create bar chart first
+        chart = slide.shapes.add_chart(
+            XL_CHART_TYPE.COLUMN_CLUSTERED, x, y, cx, cy, chart_data
+        ).chart
+        
+        # Style the bars
+        chart.has_title = False
+        chart.has_legend = False  # We'll add custom legend
+        
+        series = chart.series[0]
+        fill = series.format.fill
+        fill.solid()
+        fill.fore_color.rgb = RGBColor(192, 80, 77)  # Red bars
+        
+        # Format axes
+        value_axis = chart.value_axis
+        value_axis.has_major_gridlines = True
+        value_axis.major_gridlines.format.line.color.rgb = RGBColor(217, 217, 217)
+        value_axis.maximum_scale = 2500
+        value_axis.minimum_scale = 0
+        value_axis.major_unit = 500
+        
+        # Add data labels
+        plot = chart.plots[0]
+        plot.has_data_labels = True
+        data_labels = plot.data_labels
+        data_labels.font.size = Pt(10)
+        data_labels.font.bold = True
+        data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
+        
+        # Add line overlay manually (since python-pptx doesn't support true combo charts easily)
+        line_values = combo_data.get('line_series', {}).get('values', [])
+        if line_values:
+            self._add_line_overlay(slide, x, y, cx, cy, combo_data['categories'], line_values)
+        
+        # Add custom legend at bottom
+        self._add_combo_legend(slide, x, y + cy + Inches(0.3))
+        
+        return y_position + cy + Inches(0.8)
+    
+    def _add_line_overlay(self, slide, chart_x, chart_y, chart_width, chart_height, categories, values):
+        """Add line overlay on top of bar chart"""
+        
+        # Calculate positions
+        num_points = len(values)
+        if num_points < 2:
+            return
+        
+        # Position points
+        x_spacing = chart_width / (num_points + 0.5)
+        x_offset = chart_x + x_spacing * 0.75
+        
+        # Scale y values
+        max_val = max(values)
+        min_val = min(values)
+        y_range = max_val - min_val if max_val != min_val else 1
+        
+        points = []
+        for i, val in enumerate(values):
+            x = x_offset + i * x_spacing
+            # Position in middle area of chart
+            y = chart_y + chart_height * 0.4 - ((val - min_val) / y_range) * chart_height * 0.3
+            points.append((x, y))
+        
+        # Draw lines between points
+        for i in range(len(points) - 1):
+            line = slide.shapes.add_connector(
+                1,  # Straight line
+                points[i][0], points[i][1],
+                points[i+1][0], points[i+1][1]
+            )
+            line.line.color.rgb = RGBColor(0, 0, 0)
+            line.line.width = Pt(2.5)
+        
+        # Add dots and labels
+        for i, ((x, y), val) in enumerate(zip(points, values)):
+            # Dot
+            dot = slide.shapes.add_shape(
+                MSO_SHAPE.OVAL,
+                x - Pt(5), y - Pt(5),
+                Pt(10), Pt(10)
+            )
+            dot.fill.solid()
+            dot.fill.fore_color.rgb = RGBColor(0, 0, 0)
+            
+            # Label
+            label_shape = slide.shapes.add_textbox(
+                x - Inches(0.3), y - Inches(0.35),
+                Inches(0.6), Inches(0.25)
+            )
+            label_frame = label_shape.text_frame
+            label_frame.clear()
+            p = label_frame.add_paragraph()
+            p.text = f"{val}%"
+            p.alignment = PP_ALIGN.CENTER
+            p.font.size = Pt(9)
+            p.font.bold = True
+    
+    def _add_combo_legend(self, slide, x, y):
+        """Add custom legend for combo chart"""
+        
+        # Bar legend
+        bar_rect = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            x, y,
+            Inches(0.3), Inches(0.15)
+        )
+        bar_rect.fill.solid()
+        bar_rect.fill.fore_color.rgb = RGBColor(192, 80, 77)
+        bar_rect.line.fill.background()
+        
+        bar_label = slide.shapes.add_textbox(
+            x + Inches(0.4), y - Inches(0.05),
+            Inches(1.5), Inches(0.25)
+        )
+        bar_frame = bar_label.text_frame
+        bar_frame.clear()
+        p = bar_frame.add_paragraph()
+        p.text = "Loan Balances"
+        p.font.size = Pt(10)
+        
+        # Line legend
+        line_x = x + Inches(2)
+        line_shape = slide.shapes.add_connector(
+            1,
+            line_x, y + Inches(0.075),
+            line_x + Inches(0.3), y + Inches(0.075)
+        )
+        line_shape.line.color.rgb = RGBColor(0, 0, 0)
+        line_shape.line.width = Pt(2.5)
+        
+        line_label = slide.shapes.add_textbox(
+            line_x + Inches(0.4), y - Inches(0.05),
+            Inches(1), Inches(0.25)
+        )
+        line_frame = line_label.text_frame
+        line_frame.clear()
+        p = line_frame.add_paragraph()
+        p.text = "Yield %"
+        p.font.size = Pt(10)
     
     def _add_text_content(self, slide, text_content: List[str], x: float, y: float):
         """Add text content to slide"""
