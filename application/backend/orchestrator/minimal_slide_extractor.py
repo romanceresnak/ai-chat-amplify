@@ -8,6 +8,9 @@ import io
 import xml.etree.ElementTree as ET
 import re
 from typing import Set, Dict
+import logging
+
+logger = logging.getLogger(__name__)
 
 class MinimalSlideExtractor:
     def __init__(self, template_bytes: bytes):
@@ -32,6 +35,7 @@ class MinimalSlideExtractor:
                 
             # Find required resources from slide relationships
             required_resources = self._find_required_resources(slide_rels_content) if slide_rels_content else set()
+            logger.info(f"Found {len(required_resources)} required resources: {required_resources}")
             
             # Create new minimal presentation
             output_buffer = io.BytesIO()
@@ -90,6 +94,17 @@ class MinimalSlideExtractor:
                     resource_path = f'ppt/{resource}'
                     if resource_path in template_zip.namelist():
                         new_zip.writestr(resource_path, template_zip.read(resource_path))
+                        logger.info(f"Copied resource: {resource_path}")
+                    else:
+                        logger.warning(f"Resource not found: {resource_path}")
+                
+                # Also check for chart .rels files
+                if any('charts/' in r for r in required_resources):
+                    chart_rels_dir = 'ppt/charts/_rels/'
+                    for f in template_zip.namelist():
+                        if f.startswith(chart_rels_dir):
+                            new_zip.writestr(f, template_zip.read(f))
+                            logger.info(f"Copied chart rels: {f}")
                 
                 # Create minimal presentation.xml
                 pres_xml = self._create_minimal_presentation_xml()
@@ -117,10 +132,16 @@ class MinimalSlideExtractor:
         
         for rel in root.findall('.//r:Relationship', ns):
             target = rel.get('Target', '')
+            rel_type = rel.get('Type', '')
+            
             # Get media and charts
             if '../media/' in target or '../charts/' in target:
                 # Convert relative to ppt/... path
                 resources.add(target.replace('../', ''))
+            # Also check by relationship type
+            elif 'chart' in rel_type:
+                resources.add(target.replace('../', ''))
+                logger.info(f"Found chart relationship: {target}")
                 
         return resources
     

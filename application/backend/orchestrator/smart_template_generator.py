@@ -12,9 +12,9 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 try:
-    from .minimal_slide_extractor import extract_single_slide_minimal
+    from .full_slide_extractor import extract_single_slide_full
 except ImportError:
-    from minimal_slide_extractor import extract_single_slide_minimal
+    from full_slide_extractor import extract_single_slide_full
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -49,17 +49,43 @@ class SmartTemplateGenerator:
         # Load presentation
         prs = Presentation(io.BytesIO(self.template_cache))
         
-        # Get the target slide (0-indexed)
-        slide_index = slide_number - 1
-        if slide_index >= len(prs.slides):
-            raise ValueError(f"Slide {slide_number} not found")
+        # Find the target slide
+        target_slide = None
+        actual_slide_index = None
         
-        target_slide = prs.slides[slide_index]
+        # For South Plains slides, find by content
+        if slide_number in [23, 24, 26]:
+            for idx, slide in enumerate(prs.slides):
+                slide_text = self._get_slide_text(slide).lower()
+                
+                # Slide 23 and 26 have same content structure
+                if slide_number in [23, 26] and 'loan portfolio' in slide_text and '$1,936' in slide_text:
+                    target_slide = slide
+                    actual_slide_index = idx
+                    logger.info(f"Found Slide {slide_number} content at position {idx + 1}")
+                    break
+                # Slide 24 has donut chart
+                elif slide_number == 24 and 'loan portfolio' in slide_text and 'commercial real estate' in slide_text.lower():
+                    target_slide = slide
+                    actual_slide_index = idx
+                    logger.info(f"Found Slide {slide_number} content at position {idx + 1}")
+                    break
+        else:
+            # For other slides, use position
+            slide_index = slide_number - 1
+            if slide_index < len(prs.slides):
+                target_slide = prs.slides[slide_index]
+                actual_slide_index = slide_index
+        
+        if target_slide is None:
+            raise ValueError(f"Slide {slide_number} not found")
         
         # Update values based on slide type
         if slide_number == 23 or slide_number == 26:
+            logger.info(f"Updating Slide {slide_number} with parsed data: {slide_info}")
             self._update_slide_23(target_slide, slide_info)
         elif slide_number == 24:
+            logger.info(f"Updating Slide {slide_number} with parsed data: {slide_info}")
             self._update_slide_24(target_slide, slide_info)
         
         # Save the updated presentation to get updated bytes
@@ -67,9 +93,9 @@ class SmartTemplateGenerator:
         prs.save(output)
         output.seek(0)
         
-        # Extract only the requested slide
+        # Extract only the requested slide (use actual position + 1)
         updated_bytes = output.getvalue()
-        single_slide_bytes = extract_single_slide_minimal(updated_bytes, slide_number)
+        single_slide_bytes = extract_single_slide_full(updated_bytes, actual_slide_index + 1)
         
         return single_slide_bytes
     
@@ -91,6 +117,14 @@ class SmartTemplateGenerator:
             result['portfolio'] = self._parse_slide_24_values(instructions)
         
         return result
+    
+    def _get_slide_text(self, slide) -> str:
+        """Extract all text from a slide"""
+        text_parts = []
+        for shape in slide.shapes:
+            if hasattr(shape, 'text'):
+                text_parts.append(shape.text)
+        return ' '.join(text_parts)
     
     def _parse_slide_23_values(self, instructions: str) -> Dict[str, Any]:
         """Parse values for Slide 23/26"""
@@ -114,30 +148,40 @@ class SmartTemplateGenerator:
                 
             values['loans'][quarter] = int(amount)
         
-        # Parse yields
-        # Pattern: X.XX% in sequence
-        yield_section = re.search(r'yield[^:]*:\s*([^,\n]+)', instructions, re.IGNORECASE)
-        if yield_section:
-            yields = re.findall(r'([\d.]+)%', yield_section.group(1))
+        # Parse yields - look for yield percentages in parentheses
+        yield_match = re.search(r'yield percentages\s*\(([^)]+)\)', instructions)
+        if yield_match:
+            yield_text = yield_match.group(1)
+            yields = re.findall(r'([\d.]+)%', yield_text)
             quarters = ['2Q\'19', '3Q\'19', '4Q\'19', '1Q\'20', '2Q\'20']
             for i, y in enumerate(yields[:5]):
                 if i < len(quarters):
                     values['yields'][quarters[i]] = float(y)
         
-        # Parse highlights
-        highlight_keywords = [
-            'Total loan increase',
-            'Growth from',
-            'offset',
-            'PPP loans closed',
-            'yield of'
-        ]
+        # Also check for PPP yield if mentioned
+        ppp_match = re.search(r'yield with PPP\s*\(([^)]+)\)', instructions)
+        if ppp_match:
+            values['ppp_yield'] = re.search(r'([\d.]+)%', ppp_match.group(1)).group(1)
         
-        for keyword in highlight_keywords:
-            pattern = re.compile(f'([^.]*{keyword}[^.]*\\.)', re.IGNORECASE)
-            match = pattern.search(instructions)
-            if match:
-                values['highlights'].append(match.group(1).strip())
+        # Parse highlights - look for "Highlights" section
+        highlights_match = re.search(r'Highlights["\']?\s*(?:listing:|:)?\s*([^,]+(?:,\s*[^,]+)*)', instructions, re.IGNORECASE)
+        if highlights_match:
+            highlights_text = highlights_match.group(1)
+            # Split by commas and clean up
+            highlight_items = re.split(r',\s*(?=total|growth|partial|over|2Q)', highlights_text, flags=re.IGNORECASE)
+            for item in highlight_items:
+                clean_item = item.strip()
+                if clean_item and not clean_item.endswith(','):
+                    # Remove trailing styling info
+                    clean_item = re.sub(r',?\s*styled.*$', '', clean_item, flags=re.IGNORECASE)
+                    clean_item = re.sub(r',?\s*and\s+2Q\'20\s+yield.*$', '', clean_item, flags=re.IGNORECASE) 
+                    if clean_item:
+                        values['highlights'].append(clean_item)
+            
+            # Also get the last highlight about yield
+            yield_highlight = re.search(r'(2Q\'20 yield[^,]+\))', instructions)
+            if yield_highlight:
+                values['highlights'].append(yield_highlight.group(1))
         
         return values
     
