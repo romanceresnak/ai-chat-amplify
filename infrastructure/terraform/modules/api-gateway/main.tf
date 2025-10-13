@@ -49,6 +49,33 @@ resource "aws_api_gateway_integration" "list_orchestrator" {
   uri                    = var.lambda_invoke_arns.orchestrator
 }
 
+# Method responses for CORS
+resource "aws_api_gateway_method_response" "create_presentation_200" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.presentations.id
+  http_method = aws_api_gateway_method.create_presentation.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_method_response" "list_presentations_200" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.presentations.id
+  http_method = aws_api_gateway_method.list_presentations.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
 # CORS Configuration
 resource "aws_api_gateway_method" "presentations_options" {
   rest_api_id   = aws_api_gateway_rest_api.main.id
@@ -121,6 +148,8 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_method.list_presentations,
       aws_api_gateway_integration.orchestrator,
       aws_api_gateway_integration.list_orchestrator,
+      aws_api_gateway_method_response.create_presentation_200,
+      aws_api_gateway_method_response.list_presentations_200,
       aws_api_gateway_method.presentations_options,
       aws_api_gateway_integration.presentations_options,
       aws_api_gateway_method_response.presentations_options,

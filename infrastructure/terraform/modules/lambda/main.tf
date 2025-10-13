@@ -7,6 +7,7 @@ resource "aws_s3_bucket" "lambda_deployment" {
 resource "null_resource" "ensure_layer_exists" {
   triggers = {
     layer_check = fileexists("${path.module}/python-deps-layer.zip") ? "exists" : "missing"
+    script_hash = filemd5("${path.module}/create_simple_layer.py")
   }
   
   provisioner "local-exec" {
@@ -30,19 +31,19 @@ resource "null_resource" "ensure_layer_exists" {
   }
 }
 
-# Upload Lambda layer to S3
+# Upload existing comprehensive layer with all dependencies
 resource "aws_s3_object" "python_deps_layer" {
   bucket = aws_s3_bucket.lambda_deployment.id
-  key    = "layers/python-deps-layer.zip"
+  key    = "layers/python-deps-layer-complete.zip"
   source = "${path.module}/python-deps-layer.zip"
   
-  depends_on = [null_resource.ensure_layer_exists]
+  etag = filemd5("${path.module}/python-deps-layer.zip")
 }
 
-# Lambda Layer with all Python dependencies
+# Lambda Layer with all dependencies including python-pptx, lxml, PIL
 resource "aws_lambda_layer_version" "python_deps" {
   layer_name          = "${var.project_name}-${var.environment}-python-deps"
-  description         = "Python dependencies including python-pptx, langchain, boto3"
+  description         = "Python dependencies - complete with lxml 4.9.3, PIL, and python-pptx"
   
   s3_bucket           = aws_s3_bucket.lambda_deployment.id
   s3_key              = aws_s3_object.python_deps_layer.key
@@ -66,6 +67,7 @@ resource "aws_lambda_function" "orchestrator" {
     variables = {
       ENVIRONMENT           = var.environment
       BEDROCK_KB_ID        = var.bedrock_kb_id
+      BEDROCK_MODEL_ID     = "eu.anthropic.claude-3-5-sonnet-20240620-v1:0"
       DOCUMENTS_BUCKET     = var.s3_buckets.documents
       TEMPLATES_BUCKET     = var.s3_buckets.templates
       OUTPUT_BUCKET        = var.s3_buckets.output

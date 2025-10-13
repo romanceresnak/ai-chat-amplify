@@ -129,25 +129,92 @@ class SimpleOrchestrator:
             return f"❌ Error searching web: {str(e)}"
     
     def _create_presentation(self, request: str) -> str:
-        """Create PowerPoint presentation"""
+        """Create PowerPoint presentation using AI generator"""
         try:
             logger.info(f"Creating presentation for: {request}")
             
-            # Import presentation module
-            import presentation_agent
+            # Test all critical imports before proceeding
+            try:
+                import lxml
+                logger.info(f"lxml version: {lxml.__version__}")
+                from lxml import etree
+                logger.info("lxml.etree import successful")
+            except Exception as e:
+                logger.error(f"lxml import test failed: {e}")
             
-            # Create presentation agent
-            ppt_agent = presentation_agent.PresentationAgent()
-            result = ppt_agent.process({
-                'instructions': request,
-                'mode': 'modify',
-                'template_key': 'PUBLIC IP South Plains (1).pptx'
-            })
+            try:
+                from pptx import Presentation as TestPresentation
+                logger.info("python-pptx test import successful")
+            except Exception as e:
+                logger.error(f"python-pptx test import failed: {e}")
+                
+            try:
+                from PIL import Image
+                logger.info("PIL import successful")
+            except Exception as e:
+                logger.error(f"PIL import test failed: {e}")
             
-            if result['status'] == 'success':
-                return f"✅ **Presentation created successfully!**\n📊 **File:** {result['presentation_name']}\n🔗 **Download:** {result['download_url']}"
-            else:
-                return f"❌ **Error creating presentation:** {result.get('message', 'Unknown error')}"
+            # Import AI presentation generator with enhanced error handling
+            try:
+                from ai_presentation_generator import AIPresentationGenerator
+                
+                # Create AI generator
+                ai_generator = AIPresentationGenerator()
+                
+                # Generate presentation using AI
+                logger.info("Using AI presentation generator")
+                pptx_content = ai_generator.generate_presentation(request)
+                
+                # Determine filename based on content
+                if "loan portfolio" in request.lower():
+                    filename = "loan_portfolio_presentation.pptx"
+                elif "private equity" in request.lower() or "investment committee" in request.lower():
+                    filename = "pe_investment_committee_deck.pptx"
+                elif "debt issuance" in request.lower():
+                    filename = "debt_issuance_presentation.pptx"
+                else:
+                    filename = "ai_generated_presentation.pptx"
+                
+                # Generate unique presentation ID
+                presentation_id = str(uuid.uuid4())
+                
+                # Save PowerPoint file to S3
+                output_key = f"{presentation_id}/{filename}"
+                
+                s3.put_object(
+                    Bucket=OUTPUT_BUCKET,
+                    Key=output_key,
+                    Body=pptx_content,
+                    ContentType='application/vnd.openxmlformats-officedocument.presentationml.presentation'
+                )
+                
+                logger.info(f"AI-generated PowerPoint saved to S3: {output_key}")
+                
+                # Generate presigned URL for download
+                download_url = s3.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': OUTPUT_BUCKET, 'Key': output_key},
+                    ExpiresIn=3600
+                )
+                
+                return f"✅ **AI Presentation created successfully!**\n📊 **File:** {filename}\n🔗 **Download:** {download_url}"
+                
+            except ImportError:
+                logger.warning("AI presentation generator not available, falling back to basic presentation")
+                # Fallback to basic presentation agent
+                import presentation_agent
+                
+                ppt_agent = presentation_agent.PresentationAgent()
+                result = ppt_agent.process({
+                    'instructions': request,
+                    'mode': 'create',  # Use create mode instead of modify
+                    'template_key': None
+                })
+                
+                if result['status'] == 'success':
+                    return f"✅ **Presentation created successfully!**\n📊 **File:** {result['presentation_name']}\n🔗 **Download:** {result['download_url']}"
+                else:
+                    return f"❌ **Error creating presentation:** {result.get('message', 'Unknown error')}"
                 
         except Exception as e:
             logger.error(f"Presentation creation error: {str(e)}")
@@ -378,7 +445,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
         
         # Parse request body
-        body = json.loads(event.get('body', '{}'))
+        body_str = event.get('body')
+        if body_str is None:
+            body = {}
+        else:
+            body = json.loads(body_str)
         
         # Process request
         response = orchestrator.process_request(body)

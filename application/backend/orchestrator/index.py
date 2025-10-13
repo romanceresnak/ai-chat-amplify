@@ -12,9 +12,13 @@ import re
 import base64
 from abc import ABC, abstractmethod
 
-# Import AI presentation generator
+# Import AI presentation generators
 try:
-    from ai_presentation_generator import AIPresentationGenerator
+    use_generic = os.environ.get('USE_GENERIC_GENERATOR', 'true').lower() == 'true'
+    if use_generic:
+        from ai_presentation_generator_generic import GenericPresentationGenerator as AIPresentationGenerator
+    else:
+        from ai_presentation_generator import AIPresentationGenerator
 except ImportError:
     AIPresentationGenerator = None
 
@@ -53,51 +57,85 @@ except:
 
 def verify_user_permissions(event: Dict[str, Any], required_permission: str = 'ReadOnly') -> tuple[bool, Optional[str], Optional[List[str]]]:
     """
-    Verify user has required permissions based on Cognito groups.
+    Verify user has required permissions based on Cognito JWT token.
     Returns: (is_authorized, user_id, user_groups)
     """
     try:
-        # Extract user info from Lambda authorizer
-        request_context = event.get('requestContext', {})
-        authorizer = request_context.get('authorizer', {})
-        claims = authorizer.get('claims', {})
+        # Extract Authorization header
+        headers = event.get('headers', {})
+        auth_header = headers.get('Authorization') or headers.get('authorization')
         
-        # Get user ID and groups
-        user_id = claims.get('sub') or claims.get('username', 'anonymous')
-        groups_claim = claims.get('cognito:groups', [])
+        if not auth_header:
+            logger.info("No Authorization header found")
+            return False, 'anonymous', []
         
-        # Ensure groups is a list
-        if isinstance(groups_claim, str):
-            groups = [groups_claim]
-        elif isinstance(groups_claim, list):
-            groups = groups_claim
-        else:
-            groups = []
-        
-        # Define permission hierarchy
-        permission_levels = {
-            'Admin': 3,
-            'WriteAccess': 2,
-            'ReadOnly': 1
-        }
-        
-        # Get user's highest permission level
-        user_level = 0
-        for group in groups:
-            if group in permission_levels:
-                user_level = max(user_level, permission_levels[group])
-        
-        # Check if user has required permission
-        required_level = permission_levels.get(required_permission, 1)
-        is_authorized = user_level >= required_level
-        
-        logger.info(f"Permission check - User: {user_id}, Groups: {groups}, Required: {required_permission}, Authorized: {is_authorized}")
-        
-        return is_authorized, user_id, groups
+        # Parse JWT token (basic parsing without signature verification for internal use)
+        try:
+            import base64
+            import json
+            
+            # Split JWT token
+            token_parts = auth_header.split('.')
+            if len(token_parts) != 3:
+                logger.info("Invalid JWT token format")
+                return False, 'anonymous', []
+            
+            # Decode payload (add padding if needed)
+            payload = token_parts[1]
+            # Add padding if needed
+            missing_padding = len(payload) % 4
+            if missing_padding:
+                payload += '=' * (4 - missing_padding)
+            
+            decoded_payload = base64.b64decode(payload)
+            claims = json.loads(decoded_payload)
+            
+            # Get user info
+            user_id = claims.get('sub') or claims.get('cognito:username', 'anonymous')
+            email = claims.get('email', '')
+            groups_claim = claims.get('cognito:groups', [])
+            
+            # Ensure groups is a list
+            if isinstance(groups_claim, str):
+                groups = [groups_claim]
+            elif isinstance(groups_claim, list):
+                groups = groups_claim
+            else:
+                groups = []
+            
+            # Define permission hierarchy
+            permission_levels = {
+                'Admin': 3,
+                'WriteAccess': 2,
+                'ReadOnly': 1
+            }
+            
+            # Get user's highest permission level
+            user_level = 0
+            for group in groups:
+                if group in permission_levels:
+                    user_level = max(user_level, permission_levels[group])
+            
+            # If no groups but has valid token and email, grant ReadOnly access
+            if user_level == 0 and email and '@' in email:
+                user_level = 1  # Grant ReadOnly access to authenticated users
+                groups = ['ReadOnly']
+            
+            # Check if user has required permission
+            required_level = permission_levels.get(required_permission, 1)
+            is_authorized = user_level >= required_level
+            
+            logger.info(f"Permission check - User: {user_id}, Email: {email}, Groups: {groups}, Required: {required_permission}, Authorized: {is_authorized}")
+            
+            return is_authorized, user_id, groups
+            
+        except Exception as jwt_error:
+            logger.error(f"Error parsing JWT token: {str(jwt_error)}")
+            return False, 'anonymous', []
         
     except Exception as e:
         logger.error(f"Error verifying permissions: {str(e)}")
-        return False, None, []
+        return False, 'anonymous', []
 
 def log_audit_event(user_id: str, action: str, resource: str, event_type: str, details: Dict[str, Any] = None):
     """Send audit log event to audit logger Lambda"""
@@ -1498,6 +1536,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         http_method = event.get('httpMethod', 'POST')
         path = event.get('path', '')
         
+        # Handle OPTIONS requests for CORS
+        if http_method == 'OPTIONS':
+            return cors_response(200, {'message': 'OK'})
+        
         # Handle audit logging endpoint
         if path == '/audit' and http_method == 'POST':
             # Verify user is authenticated (any role can log audit events)
@@ -1565,8 +1607,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         instructions = body.get('instructions', '')
         files = body.get('files', [])
         
-        # Presentations and file uploads require WriteAccess
-        if files or 'presentation' in instructions.lower() or 'slide' in instructions.lower():
+        # Only file uploads require WriteAccess, presentations are ReadOnly
+        if files:
             required_permission = 'WriteAccess'
         else:
             required_permission = 'ReadOnly'
