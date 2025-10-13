@@ -14,9 +14,9 @@ from abc import ABC, abstractmethod
 
 # Import AI presentation generators
 try:
-    use_generic = os.environ.get('USE_GENERIC_GENERATOR', 'true').lower() == 'true'
-    if use_generic:
-        from ai_presentation_generator_generic import GenericPresentationGenerator as AIPresentationGenerator
+    use_smart = os.environ.get('USE_SMART_TEMPLATE', 'true').lower() == 'true'
+    if use_smart:
+        from smart_template_generator import SmartTemplateGenerator as AIPresentationGenerator
     else:
         from ai_presentation_generator import AIPresentationGenerator
 except ImportError:
