@@ -452,12 +452,12 @@ class AIPresentationGenerator:
     
     def _add_footer(self, slide, text: str):
         """Add footer bar with text"""
-        # Add gray footer bar
+        # Add footer text at fixed position near bottom
         footer_height = Inches(0.5)
-        footer_y = slide.shapes.height - footer_height
+        footer_y = Inches(6.8)  # Fixed position near bottom for 16:9 slide
         
         # Add footer text
-        footer_shape = slide.shapes.add_textbox(Inches(0.5), Inches(6.8), Inches(12.333), footer_height)
+        footer_shape = slide.shapes.add_textbox(Inches(0.5), footer_y, Inches(12.333), footer_height)
         footer_frame = footer_shape.text_frame
         footer_frame.text = text
         footer_para = footer_frame.paragraphs[0]
@@ -498,24 +498,23 @@ class AIPresentationGenerator:
         logger.info(f"Detected slide prompts: {slide_prompts}")
         
         try:
-            # Check if we can use pre-built template from S3
-            if slide_prompts and slide_prompts[0].get('slide_number') == 23:
-                template_result = self._use_template_from_s3()
-                if template_result:
-                    logger.info("Using pre-built template from S3")
-                    return template_result
+            # IMPORTANT: Skip S3 template due to corruption issues
+            # The template has broken internal relationships causing PowerPoint errors
+            # Instead, generate fresh presentations from scratch
             
-            # Fallback to XML-based generation
-            logger.info("Using XML-based presentation generator")
-            return self._generate_basic_presentation_xml(instructions, slide_prompts)
-                
-            # This code will be used once python-pptx is working in Lambda
-            if slide_prompts:
-                # Generate South Plains specific slides
+            if PPTX_AVAILABLE and slide_prompts:
+                # Generate South Plains specific slides from scratch
+                logger.info("Generating fresh presentation with python-pptx")
                 return self.generate_south_plains_slides(slide_prompts)
-            else:
-                # Fall back to general presentation generation
+            elif PPTX_AVAILABLE:
+                # Generate general presentation
+                logger.info("Generating general presentation with python-pptx")
                 return self._generate_general_presentation(instructions)
+            else:
+                # Fallback to XML-based generation
+                logger.info("Using XML-based presentation generator (python-pptx not available)")
+                return self._generate_basic_presentation_xml(instructions, slide_prompts)
+                
         except ImportError as e:
             logger.error(f"ImportError in generate_presentation: {e}")
             # Fallback to basic XML-based generation
@@ -1093,13 +1092,21 @@ class AIPresentationGenerator:
     </p:clrMapOvr>
 </p:sldLayout>'''
     
-    def _use_template_from_s3(self) -> Optional[bytes]:
+    def _use_template_from_s3(self, slide_number: int = 23) -> Optional[bytes]:
         """Try to use pre-built template from S3"""
         try:
-            logger.info("Attempting to use template from S3...")
+            # Map slide numbers to template files
+            template_map = {
+                23: 'templates/slide_23_template.pptx',
+                26: 'templates/slide_26_template.pptx'
+            }
+            
+            template_key = template_map.get(slide_number, 'templates/slide_23_template.pptx')
+            logger.info(f"Attempting to use template from S3: {template_key}")
+            
             response = s3.get_object(
                 Bucket=self.documents_bucket,
-                Key='templates/slide_23_template.pptx'
+                Key=template_key
             )
             template_content = response['Body'].read()
             logger.info(f"Successfully loaded template from S3: {len(template_content)} bytes")
