@@ -9,7 +9,6 @@ import { Send, Upload, X, FileText, Loader2, Lock } from 'lucide-react';
 import { isPresentationRequest, generatePresentation } from '@/lib/api-client';
 import { getCurrentUser } from 'aws-amplify/auth';
 import { useUserRole } from '@/hooks/useUserRole';
-import { ProtectedComponent } from '@/components/ProtectedComponent';
 import { uploadFileWithStructure } from '@/lib/s3-manager-client';
 
 interface Message {
@@ -409,28 +408,19 @@ export default function ChatInterface() {
         </div>
 
         <div className="flex gap-2">
-          <ProtectedComponent 
-            requiredRole="WriteAccess"
-            fallback={
-              <div className="p-2 border-2 border-dashed rounded-lg border-gray-200 bg-gray-50" title="Upload requires Write Access">
-                <Lock className="w-5 h-5 text-gray-400" />
-              </div>
-            }
+          <div
+            {...getRootProps()}
+            className={`p-2 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+              isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+            } ${isUploading ? 'opacity-50' : ''}`}
           >
-            <div
-              {...getRootProps()}
-              className={`p-2 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
-                isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-              } ${isUploading ? 'opacity-50' : ''}`}
-            >
-              <input {...getInputProps()} />
-              {isUploading ? (
-                <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />
-              ) : (
-                <Upload className="w-5 h-5 text-gray-500" />
-              )}
-            </div>
-          </ProtectedComponent>
+            <input {...getInputProps()} />
+            {isUploading ? (
+              <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />
+            ) : (
+              <Upload className="w-5 h-5 text-gray-500" />
+            )}
+          </div>
 
           <input
             type="text"
@@ -444,9 +434,9 @@ export default function ChatInterface() {
 
           <button
             onClick={sendMessage}
-            disabled={!canRead || isLoading || (!input.trim() && uploadedFiles.length === 0)}
+            disabled={isLoading || (!input.trim() && uploadedFiles.length === 0)}
             className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-            title={!canRead ? 'You need at least Read access to send messages' : ''}
+            title=""
           >
             {isLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
