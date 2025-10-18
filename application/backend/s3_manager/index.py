@@ -15,13 +15,13 @@ s3 = boto3.client('s3')
 
 # Environment variables
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
-DOCUMENTS_BUCKET = os.environ.get('DOCUMENTS_BUCKET', 'scribbe-ai-dev-documents')
-CLIENT_SYSTEM_ID = os.environ.get('CLIENT_SYSTEM_ID', 'scribbe-ai-system')
+DOCUMENTS_BUCKET = os.environ.get('DOCUMENTS_BUCKET', 'financepres-maker-prod-documents')
+CLIENT_SYSTEM_ID = os.environ.get('CLIENT_SYSTEM_ID', 'financepres-maker-system')
 
 # Initialize DynamoDB for pre-selected uploads tracking
 dynamodb = boto3.resource('dynamodb')
 try:
-    preselected_table = dynamodb.Table(f'scribbe-ai-{ENVIRONMENT}-preselected-uploads')
+    preselected_table = dynamodb.Table(f'financepres-maker-{ENVIRONMENT}-preselected-uploads')
 except:
     preselected_table = None
 

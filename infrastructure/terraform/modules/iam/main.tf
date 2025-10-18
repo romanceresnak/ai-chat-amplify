@@ -77,9 +77,9 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "lambda:InvokeFunction"
         ]
         Resource = [
-          "arn:aws:lambda:*:*:function:scribbe-ai-*-template-processor",
-          "arn:aws:lambda:*:*:function:scribbe-ai-*-content-generator",
-          "arn:aws:lambda:*:*:function:scribbe-ai-*-orchestrator"
+          "arn:aws:lambda:*:*:function:financepres-maker-*-template-processor",
+          "arn:aws:lambda:*:*:function:financepres-maker-*-content-generator",
+          "arn:aws:lambda:*:*:function:financepres-maker-*-orchestrator"
         ]
       }
     ]
@@ -135,8 +135,8 @@ resource "aws_iam_role_policy" "bedrock_kb_policy" {
           "iam:PassRole"
         ]
         Resource = [
-          "arn:aws:iam::873478944520:role/scribbe-ai-dev-bedrock-kb-role",
-          "arn:aws:iam::873478944520:role/scribbe-ai-dev-bedrock-agent-role"
+          "arn:aws:iam::873478944520:role/financepres-maker-prod-bedrock-kb-role",
+          "arn:aws:iam::873478944520:role/financepres-maker-prod-bedrock-agent-role"
         ]
       },
       {
@@ -209,8 +209,8 @@ resource "aws_iam_role_policy" "bedrock_agent_policy" {
           "iam:PassRole"
         ]
         Resource = [
-          "arn:aws:iam::873478944520:role/scribbe-ai-dev-bedrock-kb-role",
-          "arn:aws:iam::873478944520:role/scribbe-ai-dev-bedrock-agent-role"
+          "arn:aws:iam::873478944520:role/financepres-maker-prod-bedrock-kb-role",
+          "arn:aws:iam::873478944520:role/financepres-maker-prod-bedrock-agent-role"
         ]
       }
     ]

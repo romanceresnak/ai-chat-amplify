@@ -38,7 +38,7 @@ class AdvancedTemplateGenerator:
         self.documents_bucket = os.environ.get('DOCUMENTS_BUCKET', 'scribbe-ai-dev-documents')
         self.template_key = 'PUBLIC IP South Plains (1).pptx'
         self.template_cache = {}
-        self.bedrock_runtime = boto3.client('bedrock-runtime', region_name='eu-west-1')
+        self.bedrock_runtime = boto3.client('bedrock-runtime', region_name='us-east-1')
     
     def generate_presentation(self, instructions: str) -> bytes:
         """Generate presentation by intelligently updating template"""

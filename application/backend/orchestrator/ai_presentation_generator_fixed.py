@@ -15,7 +15,7 @@ logger.setLevel(logging.INFO)
 
 class AIPresentationGenerator:
     def __init__(self):
-        self.bedrock_runtime = boto3.client('bedrock-runtime', region_name='eu-west-1')
+        self.bedrock_runtime = boto3.client('bedrock-runtime', region_name='us-east-1')
         self.model_id = 'eu.anthropic.claude-3-5-sonnet-20240620-v1:0'
     
     def analyze_presentation_request(self, instructions: str) -> Dict[str, Any]:

@@ -1,6 +1,6 @@
 # OpenSearch Serverless Security Policy - must be created before collection
 resource "aws_opensearchserverless_security_policy" "encryption" {
-  name = "${var.project_name}-${var.environment}-encryption"
+  name = "${var.project_name}-${var.environment}-enc"
   type = "encryption"
   
   policy = jsonencode({
@@ -16,7 +16,7 @@ resource "aws_opensearchserverless_security_policy" "encryption" {
 
 # Network security policy - required for OpenSearch Serverless
 resource "aws_opensearchserverless_security_policy" "network" {
-  name = "${var.project_name}-${var.environment}-network"
+  name = "${var.project_name}-${var.environment}-net"
   type = "network"
   
   policy = jsonencode([{
@@ -47,7 +47,7 @@ resource "time_sleep" "wait_for_collection" {
 
 # Access policy for OpenSearch Serverless - must be created before index creation
 resource "aws_opensearchserverless_access_policy" "knowledge_base" {
-  name = "${var.project_name}-${var.environment}-access"
+  name = "${var.project_name}-${var.environment}-ap"
   type = "data"
   
   policy = jsonencode([{
@@ -104,7 +104,14 @@ resource "null_resource" "create_opensearch_index" {
   
   triggers = {
     collection_id = aws_opensearchserverless_collection.knowledge_base.id
+    timestamp = timestamp()
   }
+}
+
+# Wait for index creation to complete
+resource "time_sleep" "wait_for_index" {
+  depends_on = [null_resource.create_opensearch_index]
+  create_duration = "30s"
 }
 
 # Bedrock Knowledge Base
@@ -136,7 +143,8 @@ resource "aws_bedrockagent_knowledge_base" "main" {
   
   depends_on = [
     aws_opensearchserverless_access_policy.knowledge_base,
-    null_resource.create_opensearch_index
+    null_resource.create_opensearch_index,
+    time_sleep.wait_for_index
   ]
 }
 

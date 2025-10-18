@@ -7,7 +7,7 @@ export const amplifyConfig = {
       userPoolId: process.env.NEXT_PUBLIC_USER_POOL_ID || '',
       userPoolClientId: process.env.NEXT_PUBLIC_USER_POOL_CLIENT_ID || '',
       identityPoolId: process.env.NEXT_PUBLIC_IDENTITY_POOL_ID || '',
-      region: process.env.NEXT_PUBLIC_AWS_REGION || 'eu-west-1',
+      region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1',
       loginWith: {
         email: true,
       },
@@ -29,7 +29,7 @@ export const amplifyConfig = {
   Storage: {
     S3: {
       bucket: process.env.NEXT_PUBLIC_STORAGE_BUCKET || '',
-      region: process.env.NEXT_PUBLIC_AWS_REGION || 'eu-west-1',
+      region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1',
     }
   }
 };

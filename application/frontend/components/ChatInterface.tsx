@@ -265,7 +265,7 @@ export default function ChatInterface() {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Sorry, an error occurred while processing your request. Please make sure you have access to AWS Bedrock Claude models in the eu-west-1 region.',
+        content: 'Sorry, an error occurred while processing your request. Please make sure you have access to AWS Bedrock Claude models in the us-east-1 region.',
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);

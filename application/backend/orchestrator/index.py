@@ -37,16 +37,16 @@ logger.setLevel(logging.INFO)
 # Initialize AWS clients
 s3 = boto3.client('s3')
 lambda_client = boto3.client('lambda')
-bedrock = boto3.client('bedrock-runtime', region_name='eu-west-1')
+bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
 
 # Environment variables
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
-OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', 'scribbe-ai-dev-output')
-DOCUMENTS_BUCKET = os.environ.get('DOCUMENTS_BUCKET', 'scribbe-ai-dev-documents')
-TEMPLATE_PROCESSOR_ARN = os.environ.get('TEMPLATE_PROCESSOR_ARN', f'arn:aws:lambda:eu-west-1:873478944520:function:scribbe-ai-{ENVIRONMENT}-template-processor')
+OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', 'financepres-maker-prod-output')
+DOCUMENTS_BUCKET = os.environ.get('DOCUMENTS_BUCKET', 'financepres-maker-prod-documents')
+TEMPLATE_PROCESSOR_ARN = os.environ.get('TEMPLATE_PROCESSOR_ARN', f'arn:aws:lambda:us-east-1:873478944520:function:financepres-maker-{ENVIRONMENT}-template-processor')
 BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'eu.anthropic.claude-3-5-sonnet-20240620-v1:0')
-AUDIT_LOGGER_ARN = os.environ.get('AUDIT_LOGGER_ARN', f'arn:aws:lambda:eu-west-1:873478944520:function:scribbe-ai-{ENVIRONMENT}-audit-logger')
-PATTERN_ANALYZER_ARN = os.environ.get('PATTERN_ANALYZER_ARN', f'arn:aws:lambda:eu-west-1:873478944520:function:scribbe-ai-{ENVIRONMENT}-pattern-analyzer')
+AUDIT_LOGGER_ARN = os.environ.get('AUDIT_LOGGER_ARN', f'arn:aws:lambda:us-east-1:873478944520:function:financepres-maker-{ENVIRONMENT}-audit-logger')
+PATTERN_ANALYZER_ARN = os.environ.get('PATTERN_ANALYZER_ARN', f'arn:aws:lambda:us-east-1:873478944520:function:financepres-maker-{ENVIRONMENT}-pattern-analyzer')
 
 # Initialize DynamoDB for pattern insights
 dynamodb = boto3.resource('dynamodb')

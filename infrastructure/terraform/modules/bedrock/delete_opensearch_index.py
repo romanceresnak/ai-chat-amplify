@@ -6,7 +6,7 @@ import os
 def delete_index():
     try:
         # Initialize boto3 clients
-        region = os.environ.get('REGION_NAME', 'eu-west-1')
+        region = os.environ.get('REGION_NAME', 'us-east-1')
         collection_name = os.environ.get('COLLECTION_NAME', 'scribbe-ai-dev-kb')
         service = 'aoss'
         credentials = boto3.Session().get_credentials()
@@ -27,7 +27,7 @@ def delete_index():
         collection_endpoint = response['collectionDetails'][0]['collectionEndpoint']
         
         # Delete the index
-        url = f"{collection_endpoint}/scribbe-vectors"
+        url = f"{collection_endpoint}/scribbe-vectors-v2"
         headers = {"Content-Type": "application/json"}
         
         response = requests.delete(url, auth=awsauth, headers=headers)

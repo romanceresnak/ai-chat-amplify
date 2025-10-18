@@ -40,7 +40,7 @@ PdfReader = None
 
 class AIPresentationGenerator:
     def __init__(self):
-        self.bedrock_runtime = boto3.client('bedrock-runtime', region_name='eu-west-1')
+        self.bedrock_runtime = boto3.client('bedrock-runtime', region_name='us-east-1')
         self.model_id = 'eu.anthropic.claude-3-5-sonnet-20240620-v1:0'
         self.documents_bucket = os.environ.get('DOCUMENTS_BUCKET', 'scribbe-ai-dev-documents')
         self._initialize_pptx()

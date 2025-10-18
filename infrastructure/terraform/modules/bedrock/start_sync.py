@@ -6,7 +6,7 @@ import time
 def start_sync(kb_id, data_source_id=None):
     """Start a sync job for the Bedrock Knowledge Base."""
     
-    region = 'eu-west-1'
+    region = 'us-east-1'
     bedrock_agent = boto3.client('bedrock-agent', region_name=region)
     
     try:

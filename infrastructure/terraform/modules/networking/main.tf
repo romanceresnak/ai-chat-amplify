@@ -159,7 +159,7 @@ resource "aws_security_group" "vpc_endpoints" {
 # VPC Endpoints for Bedrock
 resource "aws_vpc_endpoint" "bedrock_runtime" {
   vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.eu-west-1.bedrock-runtime"
+  service_name        = "com.amazonaws.us-east-1.bedrock-runtime"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = aws_subnet.private[*].id
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
@@ -173,7 +173,7 @@ resource "aws_vpc_endpoint" "bedrock_runtime" {
 
 resource "aws_vpc_endpoint" "bedrock_agent_runtime" {
   vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.eu-west-1.bedrock-agent-runtime"
+  service_name        = "com.amazonaws.us-east-1.bedrock-agent-runtime"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = aws_subnet.private[*].id
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
@@ -187,7 +187,7 @@ resource "aws_vpc_endpoint" "bedrock_agent_runtime" {
 
 resource "aws_vpc_endpoint" "bedrock_agent" {
   vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.eu-west-1.bedrock-agent"
+  service_name        = "com.amazonaws.us-east-1.bedrock-agent"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = aws_subnet.private[*].id
   security_group_ids  = [aws_security_group.vpc_endpoints.id]

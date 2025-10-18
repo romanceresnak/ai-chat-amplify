@@ -7,7 +7,7 @@ def check_kb_status(kb_id=None):
     """Check the status of the Bedrock Knowledge Base and its data sources."""
     
     # Initialize clients
-    region = 'eu-west-1'
+    region = 'us-east-1'
     bedrock_agent = boto3.client('bedrock-agent', region_name=region)
     opensearch = boto3.client('opensearchserverless', region_name=region)
     

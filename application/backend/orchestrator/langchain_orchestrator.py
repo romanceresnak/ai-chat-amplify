@@ -41,7 +41,7 @@ logger.setLevel(logging.INFO)
 
 # Initialize AWS clients
 s3 = boto3.client('s3')
-bedrock = boto3.client('bedrock-runtime', region_name='eu-west-1')
+bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
 
 # Environment variables
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
